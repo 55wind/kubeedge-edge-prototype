@@ -40,4 +40,3 @@ EOF
 prepare_k8s_master_node
 update_isulad_config cloud
 restart_isulad
-yum install -y kubeedge-keadm kubeedge-cloudcore
