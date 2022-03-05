@@ -1,0 +1,11 @@
+--- cloudcore.yaml	2022-03-04 05:08:02.033711226 +0800
++++ cloudcore.yaml	2022-03-04 05:08:19.683764729 +0800
+@@ -63,7 +63,7 @@ modules:
+     load:
+       updateDeviceStatusWorkers: 1
+   dynamicController:
+-    enable: false
++    enable: true
+   edgeController:
+     buffer:
+       configMapEvent: 1

@@ -1,0 +1,25 @@
+--- edgecore.yaml	2022-03-04 05:31:19.036465617 +0800
++++ edgecore.yaml	2022-03-04 05:36:47.754461233 +0800
+@@ -67,10 +67,10 @@ modules:
+     podSandboxImage: kubeedge/pause:3.1
+     registerNode: true
+     registerNodeNamespace: default
+-    remoteImageEndpoint: unix:///var/run/dockershim.sock
+-    remoteRuntimeEndpoint: unix:///var/run/dockershim.sock
++    remoteImageEndpoint: unix:///var/run/isulad.sock
++    remoteRuntimeEndpoint: unix:///var/run/isulad.sock
+     runtimeRequestTimeout: 2
+-    runtimeType: docker
++    runtimeType: remote
+     volumeStatsAggPeriod: 60000000000
+   eventBus:
+     enable: true
+@@ -91,7 +91,7 @@ modules:
+     enable: true
+     metaServer:
+       debug: false
+-      enable: false
++      enable: true
+     podStatusSyncInterval: 60
+     remoteQueryTimeout: 60
+   serviceBus:

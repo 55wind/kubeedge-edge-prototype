@@ -12,3 +12,5 @@ install_cni
 update_isulad_config edge
 restart_isulad
 load_flannel_image
+load_kubeedge_pause_image
+load_nginx_image
