@@ -47,5 +47,7 @@ prepare_k8s_master_node
 update_isulad_config cloud
 restart_isulad
 yum install -y kubeedge-keadm kubeedge-cloudcore
-# 同步时钟，选择可以访问的NTP服务器即可
+echo "waiting for ntpdate, you can shutdown it by Ctrl+C"
+echo "ntpdate cn.pool.ntp.org"
 ntpdate cn.pool.ntp.org
+echo "Done!"
