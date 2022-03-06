@@ -158,6 +158,8 @@ spec:
                 operator: In
                 values:
                 - linux
+              - key: node-role.kubernetes.io/agent
+                operator: Exists
               - key: node-role.kubernetes.io/edge
                 operator: Exists
       hostNetwork: true

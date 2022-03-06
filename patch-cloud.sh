@@ -13,10 +13,9 @@ function cloudcore_manage_by_systemd() {
 
     # 杀掉当前cloudcore进程后重启
     pkill cloudcore
+    systemctl daemon-reload
+    systemctl enable cloudcore
     systemctl restart cloudcore
-
-    # 查看cloudcore运行状态
-    systemctl status cloudcore
 }
 
 patch_kubeedge_component cloudcore

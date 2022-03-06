@@ -14,3 +14,4 @@ restart_isulad
 load_flannel_image
 load_kubeedge_pause_image
 load_nginx_image
+yum install -y kubeedge-keadm kubeedge-edgecore
