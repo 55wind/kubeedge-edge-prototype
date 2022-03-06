@@ -30,6 +30,9 @@ EOF
     cat /proc/sys/net/bridge/bridge-nf-call-ip6tables
     cat /proc/sys/net/bridge/bridge-nf-call-iptables
 
+    # 关闭系统swap
+    swapoff -a
+
     # 安装k8s工具
     yum install -y kubernetes-master kubernetes-kubeadm kubernetes-client kubernetes-kubelet
 
