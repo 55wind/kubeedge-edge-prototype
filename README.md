@@ -1,16 +1,19 @@
 # KubeEdge Tools
 
-openEuler 简易安装 KubeEdge 工具包（离线安装包 + 部署脚本）
+kubeedge-tools 提供了完备的离线安装包以及部署脚本，旨在帮助用户快速搭建 KubeEdge 集群：
+- 大大减少操作步骤、简化部署难度
+- 能够支持节点无法访问外网的情况
 
-## 当前软件包版本
+## 当前安装包版本
 
 | 组件        | 版本       |  功能                          |
 | ----------  | --------- | ----------------------------- |
 | crictl      | v1.20.0   | CRI 兼容的容器运行时命令行接口工具 |
-| cni plugins | v0.9.0    | CNI 工具包                     |
-| flannel     | v0.14.0   | flannel 镜像                   |
-| nginx       | alpine    | nginx 镜像                     |
+| cni plugins | v0.9.0    | CNI 工具集                     |
+| flannel     | v0.14.0   | flannel 镜像用于提供容器网络功能  |
+| nginx       | alpine    | nginx 镜像用于测试集群基本功能    |
 
+---
 
 # KubeEdge 部署指南
 
