@@ -37,6 +37,9 @@ EOF
     systemctl enable kubelet --now
 }
 
+arch_to_toolarch $arch
+install_crictl
+install_cni
 prepare_k8s_master_node
 update_isulad_config cloud
 restart_isulad
