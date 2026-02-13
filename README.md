@@ -7,8 +7,7 @@
 - 원문 제목: KubeEdge Deployment Guide
 - 원문 링크: https://docs.openeuler.org/en/docs/24.03_LTS_SP1/edge_computing/kube_edge/kube_edge_deployment_guide.html#cluster-overview
 - 출처: openEuler community
-- 수정 여부: **수정했다**
-- 수정 요약: Ubuntu + containerd + kubeadm + keadm 환경으로 변경했고, 내 IP/스크립트로 튜닝했다.
+- 수정 요약: Ubuntu + containerd + kubeadm + keadm 환경으로 변경했고, 내 IP/스크립트로 튜닝
 
 ---
 
