@@ -14,6 +14,26 @@ crictl_version=v1.20.0
 cni_version=v0.9.0
 flannel_version=v0.14.0
 
+function pull_and_save_image() {
+    local image=$1
+    local arch=$2
+    local out_tar=$3
+
+    if command -v docker >/dev/null 2>&1; then
+        docker pull --platform=linux/$arch "$image"
+        docker save -o "$out_tar" "$image"
+    elif command -v nerdctl >/dev/null 2>&1; then
+        nerdctl -n k8s.io pull --platform=linux/$arch "$image"
+        nerdctl -n k8s.io save -o "$out_tar" "$image"
+    elif command -v ctr >/dev/null 2>&1; then
+        ctr -n k8s.io images pull --platform linux/$arch "$image"
+        ctr -n k8s.io images export "$out_tar" "$image"
+    else
+        echo "no supported runtime found for image download (docker/nerdctl/ctr)"
+        return 1
+    fi
+}
+
 function arch_to_toolarch() {
     case $1 in
     x86_64)
@@ -65,27 +85,30 @@ function install_cni() {
     tar -zxvf $tarball_dir/cni-plugins-linux-$toolarch-$cni_version.tgz -C /opt/cni/bin
 }
 
-function update_isulad_config() {
-    local mode=$1
-    echo "update isulad config: $mode"
-    echo "$(cat $config_dir/isulad-$mode-daemon.json)" > /etc/isulad/daemon.json
-}
-
-function restart_isulad() {
-    echo "restart isulad"
-    systemctl daemon-reload && systemctl restart isulad
-}
-
 function download_flannel_image() {
     local arch=$1
     echo "download flannel image: $arch"
-    docker pull --platform=linux/$arch quay.io/coreos/flannel:$flannel_version
-    docker save -o $tarball_dir/flannel-$arch.tar quay.io/coreos/flannel:$flannel_version
+    pull_and_save_image "quay.io/coreos/flannel:$flannel_version" "$arch" "$tarball_dir/flannel-$arch.tar"
 }
 
 function load_flannel_image() {
     echo "load flannel image"
-    isula load -i $tarball_dir/flannel-$toolarch.tar
+    local image_tar="$tarball_dir/flannel-$toolarch.tar"
+    if [[ ! -f "$image_tar" ]]; then
+        echo "skip load: $image_tar not found"
+        return 0
+    fi
+
+    if command -v docker >/dev/null 2>&1; then
+        docker load -i "$image_tar"
+    elif command -v ctr >/dev/null 2>&1; then
+        ctr -n k8s.io images import "$image_tar"
+    elif command -v nerdctl >/dev/null 2>&1; then
+        nerdctl -n k8s.io load -i "$image_tar"
+    else
+        echo "no supported runtime found for image load (docker/ctr/nerdctl)"
+        return 1
+    fi
 }
 
 function clean_flannel_image_tarball() {
@@ -97,20 +120,43 @@ function clean_flannel_image_tarball() {
 function install_flannel() {
     local mode=$1
     echo "install flannel: $mode"
+    if [[ -z "${KUBECONFIG:-}" && -f /etc/kubernetes/admin.conf ]]; then
+        export KUBECONFIG=/etc/kubernetes/admin.conf
+    fi
     kubectl apply -f $yamls_dir/kube-flannel-$mode.yml
-    kubectl wait --timeout=120s --for=condition=Ready pod -l app=flannel -n kube-system
+    if [[ "$mode" == "cloud" ]]; then
+        kubectl rollout status ds/kube-flannel-cloud-ds -n kube-system --timeout=180s
+    elif [[ "$mode" == "edge" ]]; then
+        kubectl rollout status ds/kube-flannel-edge-ds -n kube-system --timeout=180s
+    else
+        kubectl wait --timeout=120s --for=condition=Ready pod -l app=flannel -n kube-system
+    fi
 }
 
 function download_kubeedge_pause_image() {
     local arch=$1
     echo "download kubeedge pause image: $arch"
-    docker pull --platform=linux/$arch kubeedge/pause:3.1
-    docker save -o $tarball_dir/kubeedge-pause-$arch.tar kubeedge/pause:3.1
+    pull_and_save_image "kubeedge/pause:3.1" "$arch" "$tarball_dir/kubeedge-pause-$arch.tar"
 }
 
 function load_kubeedge_pause_image() {
     echo "load kubeedge pause image"
-    isula load -i $tarball_dir/kubeedge-pause-$toolarch.tar
+    local image_tar="$tarball_dir/kubeedge-pause-$toolarch.tar"
+    if [[ ! -f "$image_tar" ]]; then
+        echo "skip load: $image_tar not found"
+        return 0
+    fi
+
+    if command -v docker >/dev/null 2>&1; then
+        docker load -i "$image_tar"
+    elif command -v ctr >/dev/null 2>&1; then
+        ctr -n k8s.io images import "$image_tar"
+    elif command -v nerdctl >/dev/null 2>&1; then
+        nerdctl -n k8s.io load -i "$image_tar"
+    else
+        echo "no supported runtime found for image load (docker/ctr/nerdctl)"
+        return 1
+    fi
 }
 
 function clean_kubeedge_pause_image_tarball() {
@@ -122,13 +168,27 @@ function clean_kubeedge_pause_image_tarball() {
 function download_nginx_image() {
     local arch=$1
     echo "download nginx image: $arch"
-    docker pull --platform=linux/$arch nginx:alpine
-    docker save -o $tarball_dir/nginx-$arch.tar nginx:alpine
+    pull_and_save_image "nginx:alpine" "$arch" "$tarball_dir/nginx-$arch.tar"
 }
 
 function load_nginx_image() {
     echo "load nginx image"
-    isula load -i $tarball_dir/nginx-$toolarch.tar
+    local image_tar="$tarball_dir/nginx-$toolarch.tar"
+    if [[ ! -f "$image_tar" ]]; then
+        echo "skip load: $image_tar not found"
+        return 0
+    fi
+
+    if command -v docker >/dev/null 2>&1; then
+        docker load -i "$image_tar"
+    elif command -v ctr >/dev/null 2>&1; then
+        ctr -n k8s.io images import "$image_tar"
+    elif command -v nerdctl >/dev/null 2>&1; then
+        nerdctl -n k8s.io load -i "$image_tar"
+    else
+        echo "no supported runtime found for image load (docker/ctr/nerdctl)"
+        return 1
+    fi
 }
 
 function clean_nginx_image_tarball() {

@@ -6,8 +6,8 @@
      registerNodeNamespace: default
 -    remoteImageEndpoint: unix:///var/run/dockershim.sock
 -    remoteRuntimeEndpoint: unix:///var/run/dockershim.sock
-+    remoteImageEndpoint: unix:///var/run/isulad.sock
-+    remoteRuntimeEndpoint: unix:///var/run/isulad.sock
++    remoteImageEndpoint: unix:///run/containerd/containerd.sock
++    remoteRuntimeEndpoint: unix:///run/containerd/containerd.sock
      runtimeRequestTimeout: 2
 -    runtimeType: docker
 +    runtimeType: remote
