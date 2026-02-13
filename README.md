@@ -19,6 +19,12 @@
 - Kubernetes: `kubeadm`
 - KubeEdge: `keadm` (기본 `v1.22.0`)
 
+### 버전 정보 (검증 기준)
+
+- Kubernetes Client/Server: `v1.31.14`
+- Edge Node Kubernetes: `v1.31.12-kubeedge-v1.22.0`
+- Container Runtime (Cloud/Edge): `containerd://1.7.18`
+
 필요 시 버전 변경:
 
 ```bash
@@ -116,6 +122,36 @@ sudo ./install-flannel-edge.sh
 ```
 
 > `install-flannel-edge.sh`는 반드시 Cloud 노드에서 실행.
+
+### 4-1) EdgeMesh 설치 (Cloud에서 실행)
+
+> 아래 순서대로 적용
+
+```bash
+# (구버전 호환) master taint 제거
+kubectl taint nodes --all node-role.kubernetes.io/master- || true
+
+# (현재 버전) control-plane taint 제거
+kubectl taint nodes --all node-role.kubernetes.io/control-plane- || true
+
+# kube-proxy를 edge 노드에 배치하지 않도록 패치
+kubectl patch daemonset kube-proxy -n kube-system -p '{"spec": {"template": {"spec": {"affinity": {"nodeAffinity": {"requiredDuringSchedulingIgnoredDuringExecution": {"nodeSelectorTerms": [{"matchExpressions": [{"key": "node-role.kubernetes.io/edge", "operator": "DoesNotExist"}]}]}}}}}}}'
+
+# EdgeMesh 설치
+PSK=$(openssl rand -base64 32)
+helm install edgemesh --namespace kubeedge \
+  --set agent.psk="$PSK" \
+  --set agent.relayNodes[0].nodeName=etri-system-product-name \
+  --set agent.relayNodes[0].advertiseAddress="{192.168.0.56}" \
+  edgemesh/edgemesh
+```
+
+확인:
+
+```bash
+kubectl -n kubeedge get pods -o wide | grep edgemesh
+kubectl -n kube-system get ds kube-proxy -o wide
+```
 
 ---
 
