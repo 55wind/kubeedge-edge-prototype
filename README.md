@@ -141,6 +141,21 @@ helm install edgemesh --namespace kubeedge \
   edgemesh/edgemesh
 ```
 
+
+### 릴레이 노드 이름 확인
+```bash
+kubectl edit configmap edgemesh-agent-cfg -n kubeedge
+```
+여기서 릴레이 노드네임이 마스터노드네임과 다르면 마스터 노드 네임으로 변경
+```
+    relayNodes:
+    - nodeName: k8s-master
+      advertiseAddress:
+      - 192.168.0.56
+```
+
+
+
 확인:
 
 ```bash
