@@ -25,15 +25,10 @@
 - Edge Node Kubernetes: `v1.31.12-kubeedge-v1.22.0`
 - Container Runtime (Cloud/Edge): `containerd://1.7.18`
 
-필요 시 버전 변경:
-
-```bash
-export KUBEEDGE_VERSION=v1.22.0
-```
-
 ---
 
 ## 2) Cloud 설치
+containerd + kubelet + kubeadm + kubectl 설치 필요
 
 ```bash
 cd /home/etri/jinuk/kubeedge-tools
