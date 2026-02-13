@@ -103,3 +103,10 @@ kubectl get ds -A -o wide
 
 ## 6) kubectl logs/exec 디버그 활성화 (keadm 환경)
 https://kubeedge.io/docs/advanced/debug/
+
+---
+
+## 7) 출처
+
+- OpenEuler KubeEdge Deployment Guide (Installing Kubernetes): https://docs.openeuler.org/en/docs/24.03_LTS_SP1/edge_computing/kube_edge/kube_edge_deployment_guide.html?utm_source=chatgpt.com#user-content-installing-kubernetes
+- KubeEdge Advanced Debug: https://kubeedge.io/docs/advanced/debug/
