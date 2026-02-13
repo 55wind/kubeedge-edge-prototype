@@ -46,7 +46,10 @@ mkdir -p $HOME/.kube
 sudo cp /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 ```
-
+### 마스터 테인트 제거
+```bash
+kubectl taint nodes --all node-role.kubernetes.io/control-plane-
+```
 ### CloudCore 초기화
 
 ```bash
@@ -55,12 +58,35 @@ sudo ./patch-cloud.sh
 sudo ./install-flannel-cloud.sh
 ```
 
+cloud core pending에서 안넘어갈시 직접 파드 delete
+
+### cloudcore Deployment에 control-plane 고정 패치
+```bash
+kubectl -n kubeedge patch deploy cloudcore --type='merge' -p '{
+  "spec": {
+    "template": {
+      "spec": {
+        "nodeSelector": {
+          "node-role.kubernetes.io/control-plane": ""
+        },
+        "tolerations": [
+          {
+            "key": "node-role.kubernetes.io/control-plane",
+            "operator": "Exists",
+            "effect": "NoSchedule"
+          }
+        ]
+      }
+    }
+  }
+}'
+
+```
 ---
 
 ## 3) Edge 설치 (각 노드 반복)
 
 ```bash
-cd /home/etri/jinuk/kubeedge-tools
 sudo ./setup-edge.sh
 ```
 
