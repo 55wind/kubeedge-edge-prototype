@@ -2,6 +2,14 @@
 
 이 저장소는 **Ubuntu + containerd + kubeadm + keadm** 환경 기준으로 맞춰졌습니다.
 
+## 원문 링크 + 출처 표기
+
+- 원문 제목: KubeEdge Deployment Guide
+- 원문 링크: https://docs.openeuler.org/en/docs/24.03_LTS_SP1/edge_computing/kube_edge/kube_edge_deployment_guide.html#cluster-overview
+- 출처: openEuler community
+- 수정 여부: **수정했다**
+- 수정 요약: Ubuntu + containerd + kubeadm + keadm 환경으로 변경했고, 내 IP/스크립트로 튜닝했다.
+
 ---
 
 ## 1) 환경
@@ -108,5 +116,18 @@ https://kubeedge.io/docs/advanced/debug/
 
 ## 7) 출처
 
-- OpenEuler KubeEdge Deployment Guide (Installing Kubernetes): https://docs.openeuler.org/en/docs/24.03_LTS_SP1/edge_computing/kube_edge/kube_edge_deployment_guide.html?utm_source=chatgpt.com#user-content-installing-kubernetes
+- OpenEuler KubeEdge Deployment Guide: https://docs.openeuler.org/en/docs/24.03_LTS_SP1/edge_computing/kube_edge/kube_edge_deployment_guide.html#cluster-overview
 - KubeEdge Advanced Debug: https://kubeedge.io/docs/advanced/debug/
+
+---
+
+## 8) 라이선스
+
+- 문서(README, `docs/`): **CC BY-SA 4.0**
+  - https://creativecommons.org/licenses/by-sa/4.0/
+  - 본 문서 및 파생 문서는 동일조건(CC BY-SA 4.0)으로 배포
+- 코드/스크립트(그 외 파일): 루트 [LICENSE](LICENSE)의 Apache-2.0 적용
+
+참고:
+- [docs/ATTRIBUTION.md](docs/ATTRIBUTION.md)
+- [docs/LICENSE-CC-BY-SA-4.0.md](docs/LICENSE-CC-BY-SA-4.0.md)
