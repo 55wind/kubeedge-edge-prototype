@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  namespace: edge-auth
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dashboard
+  template:
+    metadata:
+      labels:
+        app: dashboard
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: ""
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: dashboard
+          image: eam-dashboard:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8501
+          env:
+            - name: MANAGER_BASE_URL
+              value: "https://172.18.78.12:8443"
+            - name: CERTS_DIR
+              value: "/certs"
+            - name: RABBITMQ_HOST
+              value: "172.18.78.12"
+            - name: RABBITMQ_EDGE_PASSWORD
+              value: "wjdqhqhghdusrntlf1!"
+          volumeMounts:
+            - name: all-certs
+              mountPath: /certs
+              readOnly: true
+      volumes:
+        - name: all-certs
+          projected:
+            sources:
+              - secret:
+                  name: ca-cert
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+              - secret:
+                  name: manager-certs
+                  items:
+                    - key: server.crt
+                      path: manager/server.crt
+                    - key: server.key
+                      path: manager/server.key
+                    - key: ca.crt
+                      path: manager/ca.crt
+              - secret:
+                  name: agent-certs
+                  items:
+                    - key: client.crt
+                      path: agent/client.crt
+                    - key: client.key
+                      path: agent/client.key
+                    - key: ca.crt
+                      path: agent/ca.crt
+              - secret:
+                  name: admin-certs
+                  items:
+                    - key: admin.crt
+                      path: admin/client.crt
+                    - key: admin.key
+                      path: admin/client.key
+                    - key: ca.crt
+                      path: admin/ca.crt
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard
+  namespace: edge-auth
+spec:
+  type: NodePort
+  selector:
+    app: dashboard
+  ports:
+    - port: 8501
+      targetPort: 8501
+      nodePort: 30501

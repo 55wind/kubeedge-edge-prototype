@@ -1,0 +1,231 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: comm-test-script
+  namespace: edge-auth
+data:
+  sender.py: |
+    import asyncio, ssl, json, time, socket, os
+    import aiormq, aiormq.abc
+
+    async def main():
+        host = os.environ["RABBITMQ_HOST"]
+        pw = os.environ["RABBITMQ_PASS"]
+        my_node = socket.gethostname()
+        queue = "edge-comm-test"
+        reply_q = "edge-comm-reply"
+
+        ctx = ssl.create_default_context(cafile="/certs/rabbitmq/ca.crt")
+        ctx.load_cert_chain("/certs/agent/client.crt", "/certs/agent/client.key")
+        ctx.check_hostname = False
+
+        conn = await aiormq.connect(f"amqps://isl:{pw}@{host}:5671/", context=ctx)
+        ch = await conn.channel()
+        await ch.queue_declare(queue, durable=False)
+        await ch.queue_declare(reply_q, durable=False)
+        # purge old messages
+        await ch.queue_purge(queue)
+        await ch.queue_purge(reply_q)
+
+        print(f"[edge1 / {my_node}] === Sending 5 messages to edge2 ===", flush=True)
+        for i in range(5):
+            msg = {"from": "edge1", "node": my_node, "seq": i,
+                   "ts": time.time(), "text": f"Hello from edge1 (msg #{i})"}
+            body = json.dumps(msg).encode()
+            await ch.basic_publish(body, routing_key=queue)
+            print(f"  [SENT -> edge2] {msg['text']}", flush=True)
+            await asyncio.sleep(0.3)
+
+        print(f"\n[edge1] Waiting for replies from edge2...", flush=True)
+        for _ in range(20):
+            await asyncio.sleep(1)
+            try:
+                result = await ch.basic_get(reply_q, no_ack=True)
+                if hasattr(result, 'body') and result.body:
+                    data = json.loads(result.body)
+                    print(f"  [RECV <- edge2] {data['text']}", flush=True)
+                    # check for more
+                    while True:
+                        r2 = await ch.basic_get(reply_q, no_ack=True)
+                        if not hasattr(r2, 'body') or not r2.body:
+                            break
+                        d2 = json.loads(r2.body)
+                        print(f"  [RECV <- edge2] {d2['text']}", flush=True)
+                    break
+            except Exception:
+                continue
+
+        print(f"\n{'='*55}", flush=True)
+        print(f"  EDGE1 -> EDGE2 communication test COMPLETE", flush=True)
+        print(f"{'='*55}", flush=True)
+        await conn.close()
+
+    asyncio.run(main())
+
+  receiver.py: |
+    import asyncio, ssl, json, time, socket, os
+    import aiormq, aiormq.abc
+
+    async def main():
+        host = os.environ["RABBITMQ_HOST"]
+        pw = os.environ["RABBITMQ_PASS"]
+        my_node = socket.gethostname()
+        queue = "edge-comm-test"
+        reply_q = "edge-comm-reply"
+
+        ctx = ssl.create_default_context(cafile="/certs/rabbitmq/ca.crt")
+        ctx.load_cert_chain("/certs/agent/client.crt", "/certs/agent/client.key")
+        ctx.check_hostname = False
+
+        conn = await aiormq.connect(f"amqps://isl:{pw}@{host}:5671/", context=ctx)
+        ch = await conn.channel()
+        await ch.queue_declare(queue, durable=False)
+        await ch.queue_declare(reply_q, durable=False)
+
+        print(f"[edge2 / {my_node}] === Waiting for messages from edge1 ===", flush=True)
+
+        received = []
+        for _ in range(30):
+            await asyncio.sleep(1)
+            try:
+                result = await ch.basic_get(queue, no_ack=True)
+                if hasattr(result, 'body') and result.body:
+                    data = json.loads(result.body)
+                    print(f"  [RECV <- edge1] {data['text']}", flush=True)
+                    received.append(data)
+                    # drain remaining
+                    while True:
+                        r2 = await ch.basic_get(queue, no_ack=True)
+                        if not hasattr(r2, 'body') or not r2.body:
+                            break
+                        d2 = json.loads(r2.body)
+                        print(f"  [RECV <- edge1] {d2['text']}", flush=True)
+                        received.append(d2)
+                    break
+            except Exception:
+                continue
+
+        if not received:
+            print("[edge2] No messages received!", flush=True)
+            await conn.close()
+            return
+
+        print(f"\n[edge2] Got {len(received)} messages! Sending replies...", flush=True)
+        for i, orig in enumerate(received):
+            msg = {"from": "edge2", "node": my_node, "seq": i,
+                   "ts": time.time(),
+                   "text": f"Reply from edge2: ACK msg #{orig['seq']}"}
+            body = json.dumps(msg).encode()
+            await ch.basic_publish(body, routing_key=reply_q)
+            print(f"  [SENT -> edge1] {msg['text']}", flush=True)
+            await asyncio.sleep(0.3)
+
+        print(f"\n{'='*55}", flush=True)
+        print(f"  EDGE2: received {len(received)}, replied {len(received)}", flush=True)
+        print(f"  EDGE2 -> EDGE1 communication test COMPLETE", flush=True)
+        print(f"{'='*55}", flush=True)
+        await conn.close()
+
+    asyncio.run(main())
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: comm-edge1-sender
+  namespace: edge-auth
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      nodeName: edge1
+      restartPolicy: Never
+      containers:
+        - name: sender
+          image: eam-agent:latest
+          imagePullPolicy: Never
+          command: ["python", "/scripts/sender.py"]
+          env:
+            - name: RABBITMQ_HOST
+              value: "172.18.78.12"
+            - name: RABBITMQ_PASS
+              value: "wjdqhqhghdusrntlf1!"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+      volumes:
+        - name: scripts
+          configMap:
+            name: comm-test-script
+        - name: certs
+          projected:
+            sources:
+              - secret:
+                  name: agent-certs
+                  items:
+                    - key: client.crt
+                      path: agent/client.crt
+                    - key: client.key
+                      path: agent/client.key
+                    - key: ca.crt
+                      path: agent/ca.crt
+              - secret:
+                  name: rabbitmq-certs
+                  items:
+                    - key: ca.crt
+                      path: rabbitmq/ca.crt
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: comm-edge2-receiver
+  namespace: edge-auth
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      nodeName: edge2
+      restartPolicy: Never
+      containers:
+        - name: receiver
+          image: eam-agent:latest
+          imagePullPolicy: Never
+          command: ["python", "/scripts/receiver.py"]
+          env:
+            - name: RABBITMQ_HOST
+              value: "172.18.78.12"
+            - name: RABBITMQ_PASS
+              value: "wjdqhqhghdusrntlf1!"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+      volumes:
+        - name: scripts
+          configMap:
+            name: comm-test-script
+        - name: certs
+          projected:
+            sources:
+              - secret:
+                  name: agent-certs
+                  items:
+                    - key: client.crt
+                      path: agent/client.crt
+                    - key: client.key
+                      path: agent/client.key
+                    - key: ca.crt
+                      path: agent/ca.crt
+              - secret:
+                  name: rabbitmq-certs
+                  items:
+                    - key: ca.crt
+                      path: rabbitmq/ca.crt

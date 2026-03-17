@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-002
+  namespace: edge-auth
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-002
+  template:
+    metadata:
+      labels:
+        app: agent-002
+    spec:
+      nodeName: edge2
+      containers:
+        - name: agent
+          image: eam-agent:latest
+          imagePullPolicy: Never
+          command: ["python", "-m", "agent.run", "--device-id", "agent-002", "--site", "factory-B", "--group", "sensors"]
+          env:
+            - name: MANAGER_BASE_URL
+              value: "https://172.18.78.12:8443"
+            - name: AMQP_URL
+              value: "amqps://isl:wjdqhqhghdusrntlf1!@172.18.78.12:5671/"
+            - name: CERTS_DIR
+              value: "/certs"
+            - name: AGENT_BUFFER_DIR
+              value: "/buffer"
+            - name: AGENT_SENSOR_TYPE
+              value: "humidity"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          volumeMounts:
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+            - name: buffer
+              mountPath: /buffer
+      volumes:
+        - name: certs
+          projected:
+            sources:
+              - secret:
+                  name: ca-cert
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+              - secret:
+                  name: agent-certs
+                  items:
+                    - key: client.crt
+                      path: agent/client.crt
+                    - key: client.key
+                      path: agent/client.key
+                    - key: ca.crt
+                      path: agent/ca.crt
+              - secret:
+                  name: rabbitmq-certs
+                  items:
+                    - key: ca.crt
+                      path: rabbitmq/ca.crt
+              - secret:
+                  name: manager-certs
+                  items:
+                    - key: ca.crt
+                      path: manager/ca.crt
+        - name: buffer
+          emptyDir: {}

@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: manager
+  namespace: edge-auth
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: manager
+  template:
+    metadata:
+      labels:
+        app: manager
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: ""
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: manager
+          image: eam-manager:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8443
+          env:
+            - name: DB_URL
+              value: "sqlite+aiosqlite:////data/manager.db"
+            - name: JWT_ISSUER
+              value: "edge-auth-manager"
+            - name: JWT_AUDIENCE
+              value: "edge-agents"
+            - name: JWT_TTL_SECONDS
+              value: "900"
+            - name: CERTS_DIR
+              value: "/certs"
+            - name: AUTO_APPROVE
+              value: "true"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: manager-certs
+              mountPath: /certs/manager
+              readOnly: true
+            - name: ca-cert
+              mountPath: /certs/ca.crt
+              subPath: ca.crt
+              readOnly: true
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: manager-certs
+          secret:
+            secretName: manager-certs
+        - name: ca-cert
+          secret:
+            secretName: ca-cert
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: manager
+  namespace: edge-auth
+spec:
+  type: NodePort
+  selector:
+    app: manager
+  ports:
+    - name: https
+      port: 8443
+      targetPort: 8443
+      nodePort: 30443
