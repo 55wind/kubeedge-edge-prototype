@@ -40,31 +40,8 @@ spec:
               mountPath: /buffer
       volumes:
         - name: certs
-          projected:
-            sources:
-              - secret:
-                  name: ca-cert
-                  items:
-                    - key: ca.crt
-                      path: ca.crt
-              - secret:
-                  name: agent-certs
-                  items:
-                    - key: client.crt
-                      path: agent/client.crt
-                    - key: client.key
-                      path: agent/client.key
-                    - key: ca.crt
-                      path: agent/ca.crt
-              - secret:
-                  name: rabbitmq-certs
-                  items:
-                    - key: ca.crt
-                      path: rabbitmq/ca.crt
-              - secret:
-                  name: manager-certs
-                  items:
-                    - key: ca.crt
-                      path: manager/ca.crt
+          hostPath:
+            path: /etc/eam-certs
+            type: Directory
         - name: buffer
           emptyDir: {}
