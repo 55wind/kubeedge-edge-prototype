@@ -41,7 +41,15 @@
       "Bash(cmd //c \"type C:\\\\ProgramData\\\\Multipass\\\\data\\\\ssh-keys\\\\id_rsa\")",
       "Bash(powershell -Command \"[System.IO.File]::ReadAllText\\(''''C:\\\\ProgramData\\\\Multipass\\\\data\\\\ssh-keys\\\\id_rsa''''\\)\")",
       "Bash(chmod 600 ~/.ssh/multipass_key)",
-      "Bash(multipass exec cloud -- bash -c \":*)"
+      "Bash(multipass exec cloud -- bash -c \":*)",
+      "Bash(mkdir -p C:/tmp/eam-imgs)",
+      "Bash(rm -rf C:/tmp/eam-imgs)",
+      "Bash(python3 -c \"import sys,json; [print\\(f''''{e[name]}={e[value]}''''\\) for e in json.loads\\(sys.stdin.read\\(\\)\\)]\")",
+      "Bash(find /cygdrive/c/Users/ISL_sub1/PycharmProjects/edge-auth-manager-prototype-ISL -name *.md -o -name *.env*)",
+      "Bash(find /cygdrive/c/Users/ISL_sub1/PycharmProjects/edge-auth-manager-prototype-ISL/services/dashboard/dashboard/pages -name *.py)",
+      "Bash(xargs ls:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }
