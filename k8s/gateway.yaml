@@ -1,0 +1,63 @@
+# 신규 작성 (1차년도에는 게이트웨이 매니페스트가 없음). eam-agent:v2 이미지를 그대로
+# 재사용하되 컨테이너 command만 `python -m eam.gateway`로 바꿔, 사설망(비공인 IP)
+# 하위 디바이스를 게이트웨이 하나의 Device 신원으로 집선(aggregate)해 Manager로
+# 배치 업링크하는 4계층(Device-Agent-Manager-Backend) 중 Device~Agent 경계의
+# "사설IP 집선" 구조를 시연한다. Manager/agent-edge*.yaml과 마찬가지로 IP는
+# __CLOUD_IP__ 플레이스홀더를 사용하고 deploy/demo-setup-v2.sh가 sed 치환한다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway-001
+  namespace: edge-auth
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway-001
+  template:
+    metadata:
+      labels:
+        app: gateway-001
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/edge: ""
+      containers:
+        - name: gateway
+          image: eam-agent:v2
+          imagePullPolicy: Never
+          command: ["python", "-m", "eam.gateway"]
+          env:
+            - name: GATEWAY_ID
+              value: "gateway-001"
+            - name: DEVICE_SITE
+              value: "factory-A-private-net"
+            - name: DEVICE_GROUP
+              value: "gateways"
+            - name: MANAGER_BASE_URL
+              value: "http://__CLOUD_IP__:30443"
+            - name: BOOTSTRAP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: eam-secrets
+                  key: bootstrap-token
+            - name: CERTS_DIR
+              value: "/certs"
+            - name: AGENT_BUFFER_DIR
+              value: "/buffer"
+            # 사설망(비공인 사설 IP 대역) 뒤에 있어 Manager에 직접 등록되지 않는
+            # 하위 디바이스 식별자 목록 - 이 값들은 Manager DB에 별도 device로
+            # 남지 않고 gateway-001의 텔레메트리 배치 안에서만 나타난다.
+            - name: GATEWAY_SUB_DEVICES
+              value: "priv-sensor-01,priv-sensor-02,priv-sensor-03"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          volumeMounts:
+            - name: certs
+              mountPath: /certs
+            - name: buffer
+              mountPath: /buffer
+      volumes:
+        - name: certs
+          emptyDir: {}
+        - name: buffer
+          emptyDir: {}

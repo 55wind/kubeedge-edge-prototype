@@ -1,0 +1,6 @@
+# 원본: prototype-y1/k8s/namespace.yaml (Apache-2.0, 사내 1차년도 산출물)
+# 수정 요약: 그대로 계승 (네임스페이스 이름만 유지, 나머지 리소스는 2차년도 repo 구조에 맞게 재작성)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: edge-auth
