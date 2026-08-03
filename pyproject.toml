@@ -8,7 +8,7 @@ version = "0.2.0"
 description = "ETRI AI_EDGE 2차년도 보안 코어 모듈 (PKI, JWS, AAA, 감사) - Edge Auth Manager"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "Apache-2.0"
 dependencies = [
     "cryptography",
     "PyJWT",
