@@ -164,11 +164,18 @@ def expected_max_wait(mmc: MMCWaitResult, n_customers: int) -> float:
     극값통계의 대략적 근사로 ``(1 - 1/N)`` 분위수를 사용한다(N이 클수록
     최댓값 분위수가 1에 가까워짐 - 표본이 많을수록 극단값이 커진다는 직관과
     부합). 정확한 순서통계량 기댓값이 아니라 실무적 근사치임을 리포트에 명시.
+
+    ``n_customers == 1``이면 ``q = 1 - 1/1 = 0.0``이 되어
+    ``wait_percentile``의 ``0<q<1`` 전제를 벗어난다(고객이 1명뿐이면 "최댓값"은
+    그 한 명의 대기시간 그 자체이므로 분위수 근사가 애초에 불필요) - 이 경우
+    평균 대기시간(``mmc.wq_s``)을 그대로 반환한다.
     """
     if n_customers <= 0:
         return 0.0
     if not mmc.stable:
         return math.inf
+    if n_customers == 1:
+        return mmc.wq_s
     q = 1.0 - 1.0 / n_customers
     return wait_percentile(mmc, q)
 

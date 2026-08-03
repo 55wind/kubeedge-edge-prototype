@@ -10,6 +10,7 @@ Manager FastAPI 앱을 인프로세스로 직접 두드릴 수 있다 (테스트
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import random
@@ -155,7 +156,15 @@ class EdgeAgent:
         if self._cert_pem is not None:
             return "approved"
 
-        csr_pem, key_pem = pki.create_csr(self.device_id)
+        # CSR/key generation is RSA-2048 keygen - CPU-bound and, at ~tens of ms
+        # each, expensive enough to starve the event loop if run inline (every
+        # other coroutine on this loop - including other devices' enroll/auth
+        # calls in the simulator/benchmark - would stall behind it). Offloading
+        # to a worker thread lets the loop keep servicing other devices while
+        # this device's key generation runs, which also matches how real
+        # devices behave (each generates its own key independently/in
+        # parallel, not serialized behind a single event loop).
+        csr_pem, key_pem = await asyncio.to_thread(pki.create_csr, self.device_id)
         resp = await self.client.post(
             REGISTER_PATH,
             json={

@@ -1,10 +1,13 @@
 """bench/report.py: 최신 벤치마크 JSON -> 한국어 성능 리포트(MD) + PNG 차트 2개.
 
 ``bench/results/bench_*.json`` 중 가장 최신 파일을 읽어:
-  - N별 enroll/auth/telemetry 지연시간(p50/p95/p99/mean/max) 표
-  - N별 auth 처리량(ops/s) 표
-  - ``bench.model.build_extrapolation``으로 1,000기 외삽 결과
-  - PNG 2개: N별 auth p95 latency, N별 auth 처리량
+  - N별 enroll/auth/telemetry 지연시간(p50/p95/p99/mean/max) 표 (전체 수명주기,
+    참고용 - enroll에는 디바이스 키 생성 비용이 포함됨)
+  - N별 인증 전용(auth-only) 버스트 처리량/지연시간 표 - 클라이언트 키 생성
+    비용이 섞이지 않은 서버(Manager 단일 워커) 순수 인증 처리 능력
+  - ``bench.model.build_extrapolation``으로 1,000기 외삽 결과 (μ는 auth-only
+    버스트 처리량으로 적합)
+  - PNG 2개: N별 auth-only p95 latency, N별 auth-only 처리량
 을 ``docs/perf/PERFORMANCE_REPORT.md`` + ``docs/perf/*.png``로 렌더링한다.
 
 matplotlib은 non-interactive Agg 백엔드를 사용하고(헤드리스 환경 대응),
@@ -52,22 +55,28 @@ def load_result(path: Path) -> Dict[str, Any]:
 
 
 def _throughput_points(data: Dict[str, Any]) -> List[tuple]:
-    return [(run["n"], run["auth_ops_per_sec"]) for run in data["runs"]]
+    """μ 적합용 (N, 처리량) 포인트 - auth-only 버스트 처리량을 사용한다.
+
+    ``auth_only_ops_per_sec``는 클라이언트 키 생성 비용이 섞이지 않은, 이미
+    발급된 인증서로 ``POST /auth/token``만 동시에 호출한 결과이므로 서버
+    (Manager 단일 워커)의 순수 인증 처리 용량을 반영한다.
+    """
+    return [(run["n"], run["auth_only_ops_per_sec"]) for run in data["runs"]]
 
 
 def render_charts(data: Dict[str, Any], out_dir: Path) -> tuple:
     out_dir.mkdir(parents=True, exist_ok=True)
     runs = data["runs"]
     ns = [r["n"] for r in runs]
-    p95s = [r["phase_stats"]["auth"]["p95"] for r in runs]
-    throughputs = [r["auth_ops_per_sec"] for r in runs]
+    p95s = [r["auth_only_latency_ms"]["p95"] for r in runs]
+    throughputs = [r["auth_only_ops_per_sec"] for r in runs]
 
     p95_path = out_dir / "p95_latency_vs_n.png"
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.plot(ns, p95s, marker="o", color="#2563eb")
     ax.set_xlabel("Number of devices (N)")
-    ax.set_ylabel("Auth p95 latency (ms)")
-    ax.set_title("Auth p95 latency vs N")
+    ax.set_ylabel("Auth-only p95 latency (ms)")
+    ax.set_title("Auth-only (POST /auth/token) p95 latency vs N")
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
     fig.savefig(p95_path, dpi=150)
@@ -77,8 +86,8 @@ def render_charts(data: Dict[str, Any], out_dir: Path) -> tuple:
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.plot(ns, throughputs, marker="o", color="#16a34a")
     ax.set_xlabel("Number of devices (N)")
-    ax.set_ylabel("Auth throughput (ops/sec)")
-    ax.set_title("Auth throughput vs N")
+    ax.set_ylabel("Auth-only throughput (ops/sec)")
+    ax.set_title("Auth-only (POST /auth/token) throughput vs N")
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
     fig.savefig(throughput_path, dpi=150)
@@ -115,7 +124,15 @@ def render_markdown(
     )
     lines.append("")
 
-    lines.append("## 1. N별 단계별 지연시간 (ms)")
+    lines.append("## 1. N별 단계별 지연시간 (ms) - 전체 수명주기 (참고용)")
+    lines.append("")
+    lines.append(
+        "enroll 단계에는 디바이스가 스스로 RSA-2048 키를 생성하는 현실적인 CPU "
+        "비용이 포함돼 있다(`EdgeAgent.enroll()`이 `asyncio.to_thread`로 오프로드해 "
+        "이벤트 루프는 막지 않지만, 그 자체의 소요 시간은 여전히 존재). 이 표는 "
+        "있는 그대로의 수명주기 체감 지연시간 참고용이며, **1,000기 외삽 모델의 "
+        "μ 적합에는 사용하지 않는다**(§2·§4·§5 참고)."
+    )
     lines.append("")
     lines.append(
         "| N | 단계 | count | p50 | p95 | p99 | mean | max |"
@@ -131,28 +148,47 @@ def render_markdown(
             )
     lines.append("")
 
-    lines.append("## 2. N별 인증(auth) 처리량")
+    lines.append("## 2. N별 인증 전용(auth-only) 버스트 - 외삽 모델의 기반 지표")
     lines.append("")
     lines.append(
-        "처리량 산식: `auth_ops_per_sec = auth 단계 성공 횟수 / 플릿 전체 실행 wall_time_s`"
-        " (fleet은 단계별 wall-clock을 별도로 기록하지 않아, 전체 수명주기"
-        "(enroll+auth+telemetry) 실행시간을 분모로 쓰는 근사치입니다 - §5 한계 참고)."
+        "**측정 방법**: N대를 먼저 enroll(인증서 발급, 측정 대상 아님)한 뒤, 이미 "
+        "발급된 인증서로 `POST /auth/token`만 동시에 호출하는 별도 버스트를 "
+        "실행한다(`bench/run_bench.py:_run_auth_only_storm`). 클라이언트 키 생성 "
+        "비용이 전혀 섞이지 않으므로, 관측된 처리량은 Manager 단일 워커(단일 "
+        "프로세스/단일 이벤트 루프)의 순수 인증 처리 용량(인증서 체인 검증 + "
+        "RS256 JWT 서명, ASGI 오버헤드 포함)을 반영한다."
     )
     lines.append("")
-    lines.append("| N | wall_time_s | success/total | auth ops/sec |")
-    lines.append("|---|---|---|---|")
+    lines.append(
+        "처리량 산식: `auth_only_ops_per_sec = N / auth-only 버스트 wall_time_s` "
+        "(버스트 wall_time은 N개 `/auth/token` 호출이 모두 끝날 때까지의 시간 - "
+        "키 생성이 섞인 §1의 전체 수명주기 wall_time과는 다른 측정치)."
+    )
+    lines.append("")
+    lines.append(
+        "| N | auth-only wall_time_s | auth-only p50 | auth-only p95 | auth-only ops/sec | "
+        "(참고) 전체 수명주기 ops/sec |"
+    )
+    lines.append("|---|---|---|---|---|---|")
     for run in data["runs"]:
+        a = run["auth_only_latency_ms"]
         lines.append(
-            f"| {run['n']} | {run['wall_time_s']:.2f} | "
-            f"{run['success_count']}/{run['n']} | {run['auth_ops_per_sec']:.2f} |"
+            f"| {run['n']} | {run['auth_only_wall_time_s']:.3f} | {a['p50']:.1f} | "
+            f"{a['p95']:.1f} | {run['auth_only_ops_per_sec']:.2f} | "
+            f"{run['full_lifecycle_ops_per_sec']:.2f} |"
         )
     lines.append("")
+    lines.append(
+        "참고 열(전체 수명주기 ops/sec)은 §5-①에서 설명하는 과거 버전의 근사치를 "
+        "비교용으로 남긴 것으로, 외삽에는 쓰이지 않는다."
+    )
+    lines.append("")
 
-    lines.append("## 3. 차트")
+    lines.append("## 3. 차트 (auth-only 버스트 기준)")
     lines.append("")
-    lines.append(f"![auth p95 latency vs N]({p95_png.name})")
+    lines.append(f"![auth-only p95 latency vs N]({p95_png.name})")
     lines.append("")
-    lines.append(f"![auth throughput vs N]({throughput_png.name})")
+    lines.append(f"![auth-only throughput vs N]({throughput_png.name})")
     lines.append("")
 
     lines.append("## 4. 1,000기 외삽 모델 결과")
@@ -160,7 +196,10 @@ def render_markdown(
     mu = extrapolation["mu_per_worker_auth_per_s"]
     lines.append(
         f"- 워커(프로세스) 1개당 실측 서비스율(μ) 추정치: **{mu:.2f} auth/s** "
-        f"(측정된 처리량 중 최댓값을 워커 {extrapolation['assumed_benchmark_workers']}개 기준으로 나눔)"
+        f"(§2 auth-only 버스트 처리량 중 최댓값을 워커 "
+        f"{extrapolation['assumed_benchmark_workers']}개 기준으로 나눔 - 클라이언트 키 "
+        "생성 비용이 섞이지 않은, in-process 단일 워커 Manager의 순수 인증 처리 "
+        "용량 + ASGI 오버헤드를 측정한 값. §5-① 참고)"
     )
     lines.append(
         f"- 시나리오: {extrapolation['target_devices']}대 디바이스가 "
@@ -200,8 +239,9 @@ def render_markdown(
     lines.append("### 4.3 다항 최소제곱 적합 (보조 검산)")
     lines.append("")
     lines.append(
-        "M/M/c 외삽과 별개로, 실측 (N, 처리량) 포인트에 2차 다항식을 최소제곱으로 "
-        "적합해 추세가 M/M/c의 포화 가정과 어긋나지 않는지 교차 확인합니다."
+        "M/M/c 외삽과 별개로, 실측 (N, auth-only 처리량) 포인트에 2차 다항식을 "
+        "최소제곱으로 적합해 추세가 M/M/c의 포화 가정과 어긋나지 않는지 교차 "
+        "확인합니다."
     )
     lines.append("")
     lines.append(f"- 적합 계수(최고차항부터): {[round(c, 6) for c in poly['coeffs']]}")
@@ -217,31 +257,58 @@ def render_markdown(
     lines.append("## 5. 한계 및 전제")
     lines.append("")
     lines.append(
-        "1. **벤치마크 환경**: 실제 uvicorn 다중 워커/네트워크가 아닌 단일 프로세스 "
+        "① **(수정 이력) 과거 μ 추정치는 서버가 아니라 하네스 자신의 병목을 "
+        "측정한 것이었음**: 이 리포트의 이전 버전은 μ를 \"auth 단계 성공 횟수 / "
+        "플릿 전체 실행 wall_time_s\"(전체 수명주기 wall-clock을 분모로 사용)로 "
+        "추정했다. 그런데 당시 `EdgeAgent.enroll()`은 CSR/RSA-2048 키 생성을 "
+        "이벤트 루프 위에서 **동기적으로** 수행했고, 이는 CPU-bound 작업이라 "
+        "`asyncio.Semaphore(concurrency)`로 동시성을 열어줘도 실질적으로는 한 "
+        "코루틴의 키 생성이 끝나야 다음 코루틴이 진행되는 사실상 직렬 실행이었다. "
+        "따라서 그 μ 상한은 \"Manager의 인증 처리 용량\"이 아니라 \"벤치마크 "
+        "하네스 자신의 (사실상 직렬화된) 클라이언트 키 생성 속도\"를 측정한 "
+        "것이었고, 여기서 도출된 \"레플리카 4대\" 같은 서버 확장 권고는 "
+        "클라이언트 측 아티팩트에 대한 처방이었다는 점에서 부정확했다. 이번 "
+        "수정으로 (a) `EdgeAgent.enroll()`의 키 생성을 `asyncio.to_thread`로 "
+        "오프로드해 이벤트 루프를 막지 않게 하고(현실적으로도 타당함 - 실제 "
+        "디바이스들은 각자 독립적으로/병렬로 키를 생성하지, 하나의 루프 뒤에서 "
+        "직렬화되지 않는다), (b) μ 적합 대상을 §2의 인증 전용(auth-only) 버스트 "
+        "처리량으로 분리했다. **현재 μ(§4)는 이미 인증서가 발급된 디바이스들이 "
+        "동시에 `POST /auth/token`만 호출할 때의 in-process 단일 워커(단일 "
+        "프로세스) Manager의 순수 인증 처리 용량 - 인증서 체인 검증 + RS256 JWT "
+        "서명 연산 + ASGI 오버헤드를 포함하되 클라이언트 키 생성/실네트워크/uvicorn "
+        "다중 워커 오버헤드는 제외 - 을 측정한다.**"
+    )
+    lines.append(
+        "② **레플리카 확장 권고의 전제**: §4.2의 \"N대 레플리카로 확장\" 논리는 "
+        "①에서 측정한 서버 측(§2 auth-only) 병목에 대한 처방이며, 클라이언트(각 "
+        "디바이스)의 키 생성은 서버와 독립적으로 병렬 수행된다고 가정한다(실제로 "
+        "디바이스마다 별도의 CPU/코어를 갖는 임베디드 환경에서는 합리적인 가정). "
+        "만약 클라이언트 키 생성이 여전히 병목이라면(예: 저사양 임베디드 디바이스) "
+        "레플리카 확장만으로는 체감 지연시간이 개선되지 않는다 - 이 경우 §1의 "
+        "전체 수명주기 enroll 지연시간을 별도로 참고해야 한다."
+    )
+    lines.append(
+        "③ **벤치마크 환경**: 실제 uvicorn 다중 워커/네트워크가 아닌 단일 프로세스 "
         "in-process ASGI(`httpx.ASGITransport`)로 측정 - 실네트워크 지연/컨테이너 "
         "오버헤드는 반영되지 않음."
     )
     lines.append(
-        "2. **처리량 산식 근사**: auth ops/sec은 auth 단계만의 순수 wall-clock이 아니라 "
-        "전체 수명주기(enroll+auth+telemetry) 실행시간을 분모로 사용한 근사치."
-    )
-    lines.append(
-        "3. **M/M/c 가정**: 도착은 포아송 과정, 서비스시간은 지수분포라고 근사. "
+        "④ **M/M/c 가정**: 도착은 포아송 과정, 서비스시간은 지수분포라고 근사. "
         "실제 정전 복구 등 인증 스톰은 도착이 더 뭉칠 수 있어(버스트) 실제 대기시간이 "
         "모델 예측보다 클 수 있음."
     )
     lines.append(
-        "4. **선형 확장 가정**: c개 레플리카로 확장 시 총 서비스율이 c*μ로 선형 증가한다고 "
+        "⑤ **선형 확장 가정**: c개 레플리카로 확장 시 총 서비스율이 c*μ로 선형 증가한다고 "
         "가정 - 실제로는 공유 DB(SQLite)/락 경합으로 선형보다 낮을 수 있음(SQLite는 "
         "다중 프로세스 동시 쓰기에 제약이 있어 운영 환경에서는 레플리카별 DB 분리 또는 "
         "다른 저장소로의 전환이 별도로 검토돼야 함)."
     )
     lines.append(
-        "5. **최대 대기시간 근사**: 이론적 상한이 아니라 N개 표본 중 최댓값을 "
+        "⑥ **최대 대기시간 근사**: 이론적 상한이 아니라 N개 표본 중 최댓값을 "
         "`(1 - 1/N)` 분위수로 근사한 값."
     )
     lines.append(
-        "6. **numpy 사용 고지**: 이 프로젝트의 허용 패키지 목록에는 numpy가 명시돼 있지 "
+        "⑦ **numpy 사용 고지**: 이 프로젝트의 허용 패키지 목록에는 numpy가 명시돼 있지 "
         "않지만, matplotlib의 필수 의존성으로 이미 설치돼 있어 다항 최소제곱 적합에서만 "
         "제한적으로 사용함(`bench/model.py` 참고)."
     )

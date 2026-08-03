@@ -157,6 +157,14 @@ def test_expected_max_wait_zero_customers_is_zero():
     assert expected_max_wait(mmc, 0) == 0.0
 
 
+def test_expected_max_wait_single_customer_does_not_crash_and_equals_mean():
+    # n_customers=1 -> q = 1 - 1/1 = 0.0, which is out of wait_percentile's
+    # valid (0,1) range; expected_max_wait must guard this instead of raising.
+    mmc = mmc_wait(lam=8.0, mu=6.0, c=2)
+    result = expected_max_wait(mmc, 1)
+    assert result == pytest.approx(mmc.wq_s)
+
+
 def test_expected_max_wait_unstable_is_infinite():
     mmc = mmc_wait(lam=100.0, mu=1.0, c=1)
     assert math.isinf(expected_max_wait(mmc, 1000))
