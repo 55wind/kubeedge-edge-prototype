@@ -261,6 +261,7 @@ multipass exec edge1 -- sudo bash -c "
   nerdctl build -t ${AGENT_IMAGE} -f deploy/Dockerfile.agent . >/dev/null 2>&1
   nerdctl save -o /tmp/mgr.tar ${MANAGER_IMAGE}
   nerdctl save -o /tmp/agent.tar ${AGENT_IMAGE}
+  ctr -n k8s.io images import /tmp/agent.tar
   pkill -9 buildkitd 2>/dev/null || true
   nerdctl system prune -af >/dev/null 2>&1 || true
   echo 'edge1 build done'

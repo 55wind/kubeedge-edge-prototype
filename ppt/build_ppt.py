@@ -780,8 +780,11 @@ def build_future(prs):
             "CA 계층 구조 - 다기관 연동 시 Intermediate CA 필요 여부 결정",
             "인증서/키 영속화 - emptyDir -> PVC 또는 KMS/HSM 연동",
             "RabbitMQ 등 비동기 채널 채택 여부, EdgeMesh 도입 검토",
+            "auth/token 키 소지 증명(서명 nonce 챌린지) - 현재는 인증서 제시만 검증",
+            "RBAC default-deny 전환 - 미등재 엔드포인트의 암묵적 허용 제거",
+            "JWS freshness(재전송 방지) - 텔레메트리 서명에 타임스탬프/nonce 검증 추가",
         ],
-        body_size=12.5,
+        body_size=11,
     )
 
     add_section_block(

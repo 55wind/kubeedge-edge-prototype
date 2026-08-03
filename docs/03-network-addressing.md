@@ -35,6 +35,7 @@
 - `collect_batch()`가 하위 디바이스들의 센서값을 모아 `send_batch_telemetry()`로 `{gateway_id, batch: [...]}` 형태의 **단일 JWS 서명 텔레메트리**로 업링크한다 — Manager의 스키마·API는 수정 없이 그대로 재사용된다(`gateway.py` 모듈 docstring).
 - K8s 배포(`k8s/gateway.yaml`)는 하위 디바이스 식별자를 `GATEWAY_SUB_DEVICES` 환경변수(`priv-sensor-01,priv-sensor-02,priv-sensor-03`)로 주입하고, 사이트를 `factory-A-private-net`으로 표기해 "사설망 집선" 의도를 명시한다.
 - `MANAGER_BASE_URL`은 `__CLOUD_IP__` 플레이스홀더로 배포 스크립트(`deploy/demo-setup-v2.sh`)가 sed 치환하는 클라우드 노드(공인 IP 또는 접근 가능 IP) 하나만 가리키면 되므로, 게이트웨이 뒤 사설 디바이스는 공인 주소 체계에서 완전히 분리된다.
+- **신뢰 가정**: 하위 `SubDevice`는 자체 인증서/키가 없으므로, 게이트웨이가 배치 텔레메트리에 실어 보내는 하위 디바이스 데이터의 출처(authenticity)는 전적으로 게이트웨이의 서명(JWS)에 의존해 보증된다 — 게이트웨이가 침해되면 공격자가 임의의 하위 디바이스 값을 위조해도 Manager는 이를 구분할 수 없다. 하위 디바이스별 개별 키 발급은 3차년도 검토 항목으로 남긴다.
 
 ## 5. 결론
 

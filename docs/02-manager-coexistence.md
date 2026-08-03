@@ -42,7 +42,7 @@ RBAC_MATRIX: Dict[Tuple[str, str], FrozenSet[str]] = {
 |---|---|
 | `site` | `RegisterRequest.site`(`src/eam/manager/schemas.py`) 값을 기준으로 디바이스를 사이트별 Manager에 배정. Agent/Gateway 쪽 `DEVICE_SITE` 환경변수(`k8s/agent-edge1.yaml`: `factory-A`, `agent-edge2.yaml`: `factory-B`)가 이미 이 축을 구분하고 있다. |
 | `group` | `RegisterRequest.group` 값을 부하 분산 세부 단위로 사용(예: `sensors`, `gateways`). 게이트웨이(`k8s/gateway.yaml`: `group=gateways`)처럼 트래픽 패턴이 다른 디바이스군을 별도 Manager로 분리할 수 있다. |
-| **라우팅 방식** | Agent/Gateway는 `MANAGER_BASE_URL` 환경변수(`src/eam/agent/__main__.py`, `src/eam/gateway/__main__.py`)로 대상 Manager를 지정하므로, 샤딩은 **배포 시점의 값 주입**만으로 구현되며 Manager 코드 변경이 필요 없다. 클러스터 내부 라우팅(예: 사이트별 Ingress path)은 별도 검토 대상이다(§4 참고). |
+| **라우팅 방식** | Agent/Gateway는 `MANAGER_BASE_URL` 환경변수(`src/eam/agent/__main__.py`, `src/eam/gateway/__main__.py`)로 대상 Manager를 지정하므로, 샤딩은 **배포 시점의 값 주입**만으로 구현되며 Manager 코드 변경이 필요 없다. 클러스터 내부 라우팅(예: 사이트별 Ingress path)은 별도 검토 대상이다(`docs/04-rnr-interface.md` §6 참고). |
 
 ## 4. 우선순위 규칙
 

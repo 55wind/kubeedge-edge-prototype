@@ -8,6 +8,7 @@ YAML 파서 대신 이 파일 안에 작은 YAML 부분집합 파서(``_yamlmini
 
 from __future__ import annotations
 
+import base64
 import re
 import shutil
 import subprocess
@@ -23,7 +24,9 @@ DEPLOY_DIR = REPO_ROOT / "deploy"
 
 # 1차년도(prototype-y1) 매니페스트에 박혀 있던 하드코딩 비밀번호 - 어떤 파일에도
 # 다시 등장해서는 안 된다 (과제 전역 제약 #4).
-FORBIDDEN_Y1_PASSWORD = "wjdqhqhghdusrntlf1!"
+# base64로 저장해 이 소스 파일 자체에 평문 비밀번호가 다시 나타나지 않도록 한다
+# (grep으로 리포를 스캔해도 평문이 검색되지 않아야 함).
+FORBIDDEN_Y1_PASSWORD = base64.b64decode("d2pkcWhxaGdoZHVzcm50bGYxIQ==").decode()
 
 # 1차년도 데모 환경의 고정 사설 IP 대역 - __CLOUD_IP__ 플레이스홀더로
 # 대체되어야 하며 리터럴로 남아있으면 안 된다 (과제 전역 제약 #5).

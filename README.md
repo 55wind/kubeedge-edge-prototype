@@ -113,4 +113,4 @@ Windows 로컬에는 Multipass가 없어 실행 자체는 검증하지 않았으
 
 ## 라이선스
 
-코드(본 repo 전체)는 Apache License 2.0을 따른다(저장소 루트 `LICENSE`). 1차년도(`prototype-y1/`)에서 계승한 일부 문서(예: `prototype-y1/docs/`의 KubeEdge 배포 가이드 파생 문서)는 원 출처 라이선스에 따라 **CC BY-SA 4.0**을 유지하며(`prototype-y1/docs/LICENSE-CC-BY-SA-4.0.md`, `prototype-y1/docs/ATTRIBUTION.md` 참고), 본 repo의 신규 작성 문서(`docs/*.md`, 본 README 포함)는 코드와 동일하게 Apache-2.0 저장소의 일부로 배포된다.
+코드(본 repo 전체)는 Apache License 2.0을 따른다(저장소 루트 `LICENSE`). 1차년도(`prototype-y1/`)에서 계승한 일부 문서(예: `prototype-y1/docs/`의 KubeEdge 배포 가이드 파생 문서)는 원 출처 라이선스에 따라 **CC BY-SA 4.0**을 유지하며(`docs/attribution/LICENSE-CC-BY-SA-4.0.md`, `docs/attribution/ATTRIBUTION.md` 참고 — `prototype-y1/`은 git-ignored이므로 신규 클론에서도 참조 가능하도록 사본을 본 repo에 둔다), 본 repo의 신규 작성 문서(`docs/*.md`, 본 README 포함)는 코드와 동일하게 Apache-2.0 저장소의 일부로 배포된다.

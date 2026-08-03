@@ -77,3 +77,4 @@
 | 인증서/키 영속화 | 현재 데모는 `emptyDir`에 CA/JWT 키를 저장해 Pod 재시작 시 재생성됨(`demo/DEMO_SCENARIO.md` §3) — 운영 전환 시 PVC 또는 KMS/HSM 연동 필요. |
 | 다수 Manager 트래픽 라우팅 | `docs/02-manager-coexistence.md`의 샤딩 규칙(사이트/그룹별)을 실제 배포 토폴로지에 어떻게 매핑할지 ETRI 테스트베드 구성과 함께 확정. |
 | RabbitMQ 등 비동기 채널 채택 여부 | `k8s/rabbitmq.yaml`은 선택 사항으로 문서화돼 있음 — 대용량 비동기 이벤트가 실제로 필요한지 여부를 ETRI 요구사항으로 확인 필요. |
+| `/auth/token` 신뢰 가정 | 현 프로토타입의 `POST /api/v1/auth/token`은 인증서 "제시" 기반 발급이며(§2), 클라이언트가 해당 인증서의 개인키를 실제로 보유하고 있다는 소지 증명(proof-of-possession)은 별도로 검증하지 않는다. 운영 환경에서는 리버스 프록시의 mTLS 종단(§6 "mTLS 종단 위치")이 TLS 핸드셰이크로 개인키 소지를 증명하는 역할을 담당한다는 신뢰 가정 하에 설계되었다 — 따라서 프록시는 클라이언트가 보낸 `X-Client-Cert` 헤더를 반드시 strip하고 자신이 mTLS로 검증한 인증서만 재주입해야 한다(스푸핑 방지). 서명 nonce 챌린지 기반 PoP(Proof-of-Possession)는 3차년도 하드닝 항목으로 남긴다. |
