@@ -228,6 +228,28 @@ def device_id_from_cert(cert_pem: bytes) -> Optional[str]:
     return None
 
 
+def device_id_from_csr(csr_pem: bytes) -> Optional[str]:
+    """Extract the device_id from a CSR's SPIFFE SAN URI, if present.
+
+    Mirrors :func:`device_id_from_cert` but reads the identity a device is
+    *requesting* (from its CSR) rather than the identity a CA already issued.
+    Callers that trust a caller-supplied ``device_id`` alongside a CSR should
+    cross-check it against this function's result before signing, so a CSR
+    cannot smuggle in a different identity than the one it was registered
+    under. Raises ``ValueError`` if ``csr_pem`` is not a well-formed CSR.
+    """
+    csr = x509.load_pem_x509_csr(csr_pem)
+    try:
+        san = csr.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+    except x509.ExtensionNotFound:
+        return None
+
+    for uri in san.get_values_for_type(x509.UniformResourceIdentifier):
+        if uri.startswith(SPIFFE_URI_PREFIX):
+            return uri[len(SPIFFE_URI_PREFIX):]
+    return None
+
+
 def save_pem(path: PathLike, pem_data: bytes) -> None:
     """Write PEM bytes to ``path``, creating parent directories as needed."""
     target = Path(path)

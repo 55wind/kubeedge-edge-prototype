@@ -409,3 +409,122 @@ def test_every_request_is_recorded_in_audit_log(tmp_path, monkeypatch):
     http_events = audit_resp.json()
     assert len(http_events) >= 2
     assert all(row["event"] == "http" for row in http_events)
+
+
+# ---------------------------------------------------------------------------
+# Fix report: malformed CSR must never crash unhandled (Important 1)
+# ---------------------------------------------------------------------------
+
+
+def test_register_rejects_malformed_csr(tmp_path, monkeypatch):
+    app = _make_app(tmp_path, monkeypatch, auto_approve=True)
+    client = TestClient(app)
+
+    resp = client.post(
+        "/api/v1/devices/register",
+        json={
+            "device_id": "dev-bad-csr",
+            "site": "seoul",
+            "group": "line-a",
+            "csr_pem": "-----BEGIN CERTIFICATE REQUEST-----\nnot a real CSR\n-----END CERTIFICATE REQUEST-----\n",
+            "bootstrap_token": BOOTSTRAP_TOKEN,
+        },
+    )
+    # Must be a clean 400, never an unhandled 500.
+    assert resp.status_code == 400
+
+    admin_token = _admin_token(client)
+    audit_resp = client.get(
+        "/api/v1/audit", params={"device_id": "dev-bad-csr"}, headers=_auth_header(admin_token)
+    )
+    events = {row["event"]: row for row in audit_resp.json()}
+    assert "register" in events
+    assert events["register"]["outcome"] == "fail"
+
+
+def test_middleware_audits_and_responds_cleanly_on_unhandled_exception(tmp_path, monkeypatch):
+    # Simulate a genuinely unexpected (non-HTTPException) exception from deep
+    # inside a route to prove the audit middleware records it and still
+    # returns a well-formed response (with the insecure-mode header intact)
+    # instead of letting it crash past the middleware unaudited.
+    app = _make_app(tmp_path, monkeypatch, auto_approve=True, insecure_mode=True)
+    client = TestClient(app)
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("boom: simulated unexpected failure")
+
+    monkeypatch.setattr(app.state.store, "list_devices", _boom)
+
+    resp = client.get("/api/v1/devices")
+    assert resp.status_code == 500
+    assert resp.headers.get("X-EAM-Mode") == "insecure"
+
+    http_events = app.state.audit.query(event="http", limit=10)
+    assert any(e.outcome == "error" and "unhandled_exception" in e.detail for e in http_events)
+
+
+# ---------------------------------------------------------------------------
+# Fix report: CSR SAN identity must match the claimed device_id (Important 2)
+# ---------------------------------------------------------------------------
+
+
+def test_register_rejects_csr_with_mismatched_san_identity(tmp_path, monkeypatch):
+    app = _make_app(tmp_path, monkeypatch, auto_approve=True)
+    client = TestClient(app)
+
+    # CSR is genuinely for "someone-else", but the caller claims "dev-claim".
+    csr_pem, _key = pki.create_csr("someone-else")
+    resp = client.post(
+        "/api/v1/devices/register",
+        json={
+            "device_id": "dev-claim",
+            "site": "seoul",
+            "group": "line-a",
+            "csr_pem": csr_pem.decode(),
+            "bootstrap_token": BOOTSTRAP_TOKEN,
+        },
+    )
+    assert resp.status_code == 400
+
+    # No zombie registration should have been persisted, and the failure is audited.
+    admin_token = _admin_token(client)
+    devices_resp = client.get("/api/v1/devices", headers=_auth_header(admin_token))
+    assert "dev-claim" not in {d["device_id"] for d in devices_resp.json()}
+
+    audit_resp = client.get(
+        "/api/v1/audit", params={"device_id": "dev-claim"}, headers=_auth_header(admin_token)
+    )
+    events = {row["event"]: row for row in audit_resp.json()}
+    assert "register" in events
+    assert events["register"]["outcome"] == "fail"
+
+
+def test_approve_rejects_csr_with_mismatched_san_identity(tmp_path, monkeypatch):
+    # Bypass the (now-validating) register endpoint to simulate a pending
+    # device whose stored CSR does not match its device_id, and confirm
+    # /approve independently rejects it too (defense in depth).
+    app = _make_app(tmp_path, monkeypatch, auto_approve=False)
+    client = TestClient(app)
+
+    csr_pem, _key = pki.create_csr("someone-else")
+    app.state.store.register_device(
+        device_id="dev-zombie", site="seoul", group_name="line-a",
+        csr_pem=csr_pem.decode(), status="pending",
+    )
+
+    admin_token = _admin_token(client)
+    approve_resp = client.post(
+        "/api/v1/devices/dev-zombie/approve", headers=_auth_header(admin_token)
+    )
+    assert approve_resp.status_code == 400
+
+    devices_resp = client.get("/api/v1/devices", headers=_auth_header(admin_token))
+    devices = {d["device_id"]: d for d in devices_resp.json()}
+    assert devices["dev-zombie"]["status"] == "pending"
+
+    audit_resp = client.get(
+        "/api/v1/audit", params={"device_id": "dev-zombie"}, headers=_auth_header(admin_token)
+    )
+    events = {row["event"]: row for row in audit_resp.json()}
+    assert "approve" in events
+    assert events["approve"]["outcome"] == "fail"

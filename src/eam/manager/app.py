@@ -36,6 +36,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509 import load_pem_x509_certificate
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 from eam.common import config as config_module
 from eam.common import pki
@@ -215,7 +216,36 @@ def create_app(
 
     @app.middleware("http")
     async def audit_and_mode_middleware(request: Request, call_next):
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            # An unhandled exception raised by a route (e.g. a bare ValueError
+            # from a malformed CSR/cert) would otherwise propagate straight
+            # past this middleware's post-processing to Starlette's
+            # ServerErrorMiddleware, producing a 500 with NO audit row at all
+            # ("모든 요청 감사기록" would be violated) and no X-EAM-Mode header.
+            # Catch it here so every request — success, handled error, or
+            # crash — gets exactly one audit row and a well-formed response.
+            logger.exception(
+                "unhandled exception while processing %s %s", request.method, request.url.path
+            )
+            try:
+                app.state.audit.record(
+                    event="http",
+                    device_id=None,
+                    outcome="error",
+                    detail=(
+                        f"{request.method} {request.url.path} 500 "
+                        f"unhandled_exception={exc.__class__.__name__}: {exc}"
+                    ),
+                )
+            except Exception:  # pragma: no cover - audit logging must never break the app
+                logger.exception("failed to record http audit event for unhandled exception")
+            response = JSONResponse(status_code=500, content={"detail": "internal server error"})
+            if app.state.insecure_mode:
+                response.headers["X-EAM-Mode"] = "insecure"
+            return response
+
         try:
             outcome = "ok" if response.status_code < 400 else "error"
             app.state.audit.record(
@@ -263,6 +293,41 @@ def create_app(
             )
         return identity
 
+    # -- CSR validation -----------------------------------------------------
+
+    def _validate_csr_matches_device(csr_pem_bytes: bytes, device_id: str, *, event: str) -> None:
+        """Reject a CSR that is malformed or whose SAN identity is not ``device_id``.
+
+        Used at both /devices/register and /devices/{id}/approve: a CSR is
+        the caller's *claim* to an identity, and signing it unchecked would
+        let a request register under one device_id while the issued
+        certificate actually asserts a different one (a "zombie"
+        registration). This also prevents malformed CSRs from ever reaching
+        ``cryptography``'s CSR parser inside ``ca.sign_csr``, which raises a
+        bare ``ValueError`` that is not an HTTPException.
+        """
+        try:
+            claimed_device_id = pki.device_id_from_csr(csr_pem_bytes)
+        except ValueError as exc:
+            app.state.audit.record(
+                event=event, device_id=device_id, outcome="fail",
+                detail=f"invalid CSR: {exc}",
+            )
+            raise HTTPException(status_code=400, detail="invalid CSR") from exc
+
+        if claimed_device_id != device_id:
+            app.state.audit.record(
+                event=event, device_id=device_id, outcome="fail",
+                detail=(
+                    f"CSR SAN device identity {claimed_device_id!r} does not "
+                    f"match device_id {device_id!r}"
+                ),
+            )
+            raise HTTPException(
+                status_code=400,
+                detail="CSR SAN device identity does not match device_id",
+            )
+
     # -- router -------------------------------------------------------------
 
     router = APIRouter(prefix="/api/v1")
@@ -288,6 +353,7 @@ def create_app(
             raise HTTPException(status_code=409, detail="device already registered")
 
         csr_pem_bytes = body.csr_pem.encode()
+        _validate_csr_matches_device(csr_pem_bytes, body.device_id, event="register")
 
         if app.state.cfg.auto_approve:
             cert_pem_bytes = ca.sign_csr(csr_pem_bytes)
@@ -515,7 +581,10 @@ def create_app(
         if not device.csr_pem:
             raise HTTPException(status_code=409, detail="device has no CSR on file")
 
-        cert_pem_bytes = ca.sign_csr(device.csr_pem.encode())
+        csr_pem_bytes = device.csr_pem.encode()
+        _validate_csr_matches_device(csr_pem_bytes, device_id, event="approve")
+
+        cert_pem_bytes = ca.sign_csr(csr_pem_bytes)
         cert_serial = pki.cert_serial(cert_pem_bytes)
         store.approve_device(device_id, cert_serial, cert_pem_bytes.decode())
         app.state.audit.record(

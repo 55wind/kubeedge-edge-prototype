@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -41,6 +42,16 @@ def test_csr_has_spiffe_san_uri():
     san = csr.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
     uris = san.get_values_for_type(x509.UniformResourceIdentifier)
     assert uris == ["spiffe://sangmyung/eam/dev-001"]
+
+
+def test_device_id_from_csr_matches_created_device_id():
+    csr_pem, _key_pem = pki.create_csr("dev-002")
+    assert pki.device_id_from_csr(csr_pem) == "dev-002"
+
+
+def test_device_id_from_csr_raises_on_malformed_csr():
+    with pytest.raises(ValueError):
+        pki.device_id_from_csr(b"not a csr at all")
 
 
 def test_full_roundtrip_ca_csr_sign_verify_device_id():
