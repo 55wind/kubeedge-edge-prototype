@@ -7,3 +7,8 @@ __pycache__/
 certs/
 .superpowers/
 .idea/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/

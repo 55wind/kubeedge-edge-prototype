@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eam"
+version = "0.2.0"
+description = "ETRI AI_EDGE 2차년도 보안 코어 모듈 (PKI, JWS, AAA, 감사) - Edge Auth Manager"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "cryptography",
+    "PyJWT",
+    "fastapi",
+    "uvicorn",
+    "httpx",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+report = ["python-pptx", "matplotlib"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["eam*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
