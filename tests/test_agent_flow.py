@@ -21,7 +21,7 @@ import time
 import httpx
 import pytest
 
-from eam.agent.agent import AgentError, EdgeAgent
+from eam.agent.agent import AgentError, EdgeAgent, PermanentTelemetryError
 from eam.manager.app import create_app
 
 BOOTSTRAP_TOKEN = "test-agent-bootstrap-token"
@@ -163,6 +163,8 @@ def test_read_sensor_temperature_and_humidity_shapes(tmp_path, monkeypatch):
     with pytest.raises(ValueError):
         agent.read_sensor("pressure")
 
+    asyncio.run(agent.aclose())
+
 
 # ---------------------------------------------------------------------------
 # send_telemetry roundtrip
@@ -289,5 +291,142 @@ def test_flush_buffer_keeps_only_still_failing_entries(tmp_path, monkeypatch):
         assert len(still_buffered) == 2
 
         await agent.aclose()
+
+    asyncio.run(scenario())
+
+
+# ---------------------------------------------------------------------------
+# permanent (4xx) vs. transient failure classification
+# ---------------------------------------------------------------------------
+
+
+def test_send_telemetry_on_revoked_device_is_permanent_and_not_buffered(tmp_path, monkeypatch):
+    app = _make_app(tmp_path, monkeypatch)
+    agent = _agent(app, tmp_path)
+
+    async def scenario():
+        await agent.enroll(BOOTSTRAP_TOKEN)
+
+        # Revoke directly on the store (equivalent to an admin calling
+        # POST /devices/{id}/revoke) so this test doesn't need an admin token.
+        app.state.store.revoke_device("agent-dev-001")
+
+        with pytest.raises(PermanentTelemetryError):
+            await agent.send_telemetry({"metric": "cpu", "value": 999})
+
+        # Permanent (4xx) failures must NOT be buffered - retrying a revoked
+        # device's telemetry will fail identically forever.
+        assert not agent.buffer_path.exists()
+        assert app.state.store.list_telemetry(device_id="agent-dev-001") == []
+
+        await agent.aclose()
+
+    asyncio.run(scenario())
+
+
+def test_flush_buffer_drops_entries_that_become_permanently_rejected(tmp_path, monkeypatch):
+    app = _make_app(tmp_path, monkeypatch)
+    agent = _agent(app, tmp_path)
+
+    async def scenario():
+        await agent.enroll(BOOTSTRAP_TOKEN)
+
+        real_post = agent.client.post
+
+        async def _boom(*args, **kwargs):
+            raise httpx.ConnectError("simulated network outage")
+
+        # First: a transient network failure buffers the payload normally.
+        monkeypatch.setattr(agent.client, "post", _boom)
+        ok = await agent.send_telemetry({"metric": "cpu", "value": 1})
+        assert ok is False
+        monkeypatch.setattr(agent.client, "post", real_post)
+        assert agent.buffer_path.exists()
+
+        # The device gets revoked while the payload is sitting in the buffer -
+        # the buffered entry is now permanently unrecoverable.
+        app.state.store.revoke_device("agent-dev-001")
+
+        sent = await agent.flush_buffer()
+        assert sent == 0
+        # Dropped (dead-lettered), not kept forever: buffer file is now empty/gone.
+        assert not agent.buffer_path.exists()
+        assert app.state.store.list_telemetry(device_id="agent-dev-001") == []
+
+        await agent.aclose()
+
+    asyncio.run(scenario())
+
+
+# ---------------------------------------------------------------------------
+# credential resume from certs_dir (no re-enroll needed after "restart")
+# ---------------------------------------------------------------------------
+
+
+def test_new_agent_instance_resumes_credentials_from_certs_dir_without_enroll(
+    tmp_path, monkeypatch
+):
+    app = _make_app(tmp_path, monkeypatch)
+    certs_dir = tmp_path / "agent_certs" / "resume-dev"
+    transport = httpx.ASGITransport(app=app)
+
+    def _make(device_id="resume-dev"):
+        return EdgeAgent(
+            device_id=device_id,
+            site="seoul",
+            group="line-a",
+            manager_url="http://manager.local",
+            certs_dir=certs_dir,
+            transport=transport,
+        )
+
+    async def scenario():
+        agent1 = _make()
+        await agent1.enroll(BOOTSTRAP_TOKEN)
+        await agent1.aclose()
+
+        # Simulate a process restart: a brand new EdgeAgent instance pointed
+        # at the same certs_dir, with enroll() never called on it.
+        agent2 = _make()
+        ok = await agent2.send_telemetry({"metric": "cpu", "value": 7})
+        assert ok is True
+        await agent2.aclose()
+
+    asyncio.run(scenario())
+
+    rows = app.state.store.list_telemetry(device_id="resume-dev")
+    assert len(rows) == 1
+    assert json.loads(rows[0].payload_json) == {"metric": "cpu", "value": 7}
+
+
+def test_enroll_short_circuits_when_credentials_already_loaded_from_disk(
+    tmp_path, monkeypatch
+):
+    app = _make_app(tmp_path, monkeypatch)
+    certs_dir = tmp_path / "agent_certs" / "resume-dev-2"
+    transport = httpx.ASGITransport(app=app)
+
+    def _make():
+        return EdgeAgent(
+            device_id="resume-dev-2",
+            site="seoul",
+            group="line-a",
+            manager_url="http://manager.local",
+            certs_dir=certs_dir,
+            transport=transport,
+        )
+
+    async def scenario():
+        agent1 = _make()
+        await agent1.enroll(BOOTSTRAP_TOKEN)
+        await agent1.aclose()
+
+        # A second instance re-calling enroll() must short-circuit (return
+        # the already-approved status) rather than re-register and hit the
+        # Manager's 409 "device already registered".
+        agent2 = _make()
+        status = await agent2.enroll(BOOTSTRAP_TOKEN)
+        assert status == "approved"
+        await agent2.aclose()
 
     asyncio.run(scenario())

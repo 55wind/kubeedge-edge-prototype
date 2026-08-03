@@ -79,7 +79,14 @@ class VirtualDevice:
                 ok = await self.agent.send_telemetry(payload)
                 result.telemetry_ms.append((time.perf_counter() - t0) * 1000.0)
                 if not ok:
-                    raise RuntimeError(f"telemetry send #{i} failed (not buffered/resent)")
+                    # send_telemetry() already appended this payload to the
+                    # local buffer for later flush_buffer() retry; from this
+                    # lifecycle run's point of view it still counts as a
+                    # failed attempt (Manager was not actually reached).
+                    raise RuntimeError(
+                        f"telemetry send #{i} failed transiently (buffered for later retry, "
+                        "not yet delivered to Manager)"
+                    )
 
             result.success = True
         except Exception as exc:  # noqa: BLE001 - 개별 디바이스 실패를 결과에 담아 반환

@@ -37,6 +37,20 @@ class AgentError(Exception):
     """EdgeAgent 사용 순서 오류(예: enroll 이전에 get_token 호출)."""
 
 
+class PermanentTelemetryError(Exception):
+    """Manager가 4xx로 영구 거부한 경우(폐기된 디바이스, 위조/불일치 JWS 등).
+
+    네트워크 오류나 Manager 측 5xx와 달리, 동일한 요청을 재시도해도 결과가
+    바뀌지 않는 것이 확정적이므로 :meth:`EdgeAgent.send_telemetry` /
+    :meth:`EdgeAgent.flush_buffer` 는 이 경우를 버퍼링(무한 재시도) 대상에서
+    제외하고 이 예외로 즉시 알린다.
+    """
+
+    def __init__(self, message: str, status_code: int) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
 def simulate_sensor_reading(sensor_type: str) -> Dict[str, Any]:
     """센서 값을 랜덤 시뮬레이션으로 생성한다 (temperature/humidity).
 
@@ -99,10 +113,37 @@ class EdgeAgent:
         else:
             self.buffer_path = self.certs_dir / "buffer.jsonl"
 
+        self._load_existing_credentials()
+
+    def _load_existing_credentials(self) -> None:
+        """certs_dir에 이전 enroll()이 남긴 인증서+개인키가 있으면 로드한다.
+
+        이게 없으면 프로세스가 재시작될 때마다 매번 다시 enroll()해야 하고,
+        그러면 Manager는 이미 등록된 device_id에 대해 무조건 409를 반환하므로
+        재시작 후에는 아무것도 동작하지 않게 된다 - "재시작 후에도 로컬 버퍼가
+        남아 있다가 재전송된다"는 전제 자체가 성립하려면 자격증명도 함께
+        디스크에서 복구되어야 한다.
+        """
+        key_path = self.certs_dir / f"{self.device_id}.key.pem"
+        cert_path = self.certs_dir / f"{self.device_id}.cert.pem"
+        if key_path.exists():
+            self._key_pem = pki.load_pem(key_path)
+        if cert_path.exists():
+            self._cert_pem = pki.load_pem(cert_path).decode()
+
     # -- enrollment -----------------------------------------------------
 
     async def enroll(self, bootstrap_token: str) -> str:
         """CSR을 생성해 Manager에 등록하고, 발급된 인증서+개인키를 certs_dir에 저장한다.
+
+        이미 certs_dir에서 인증서가 로드되어 있으면(이전에 이 디바이스가
+        "approved"까지 성공했고 프로세스만 재시작된 경우) Manager에 다시
+        등록을 시도하지 않고 즉시 ``"approved"``를 반환한다 - Manager의
+        register 엔드포인트는 이미 등록된 device_id에 대해 무조건 409를
+        반환하므로, 재시도해봐야 실패만 반복될 뿐이다. (인증서 없이 개인키만
+        복구된 "pending" 상태 - 아직 관리자 승인 대기 중 재시작된 경우 - 는
+        이 단축 경로 대상이 아니며, device 역할로는 자신의 승인 상태를 조회할
+        Manager API가 없어 이번 구현 범위 밖으로 남겨둔다.)
 
         Returns:
             등록 상태(``"approved"`` 또는 ``"pending"``).
@@ -111,6 +152,9 @@ class EdgeAgent:
             httpx.HTTPStatusError: Manager가 등록을 거부한 경우(잘못된
                 bootstrap_token 등).
         """
+        if self._cert_pem is not None:
+            return "approved"
+
         csr_pem, key_pem = pki.create_csr(self.device_id)
         resp = await self.client.post(
             REGISTER_PATH,
@@ -171,17 +215,36 @@ class EdgeAgent:
     # -- telemetry --------------------------------------------------------
 
     async def _post_telemetry_once(self, payload: Dict[str, Any]) -> bool:
-        """payload를 JWS 서명 후 1회 전송 시도. 성공(2xx) 여부만 반환한다.
+        """payload를 JWS 서명 후 1회 전송 시도.
 
-        토큰 갱신(``get_token``)이 필요한 상황에서 그 요청 자체가 전송 실패로
-        끝나는 경우(예: 네트워크 단절 중 최초 텔레메트리 전송 시도)도 이
-        메서드 관점에서는 동일한 "이번 전송 실패"로 취급해 버퍼링 대상이
-        되게 한다.
+        실패를 두 종류로 명확히 구분한다(재시도해도 되는지가 완전히 다르므로):
+
+        * **일시적(transient)** - 네트워크 오류/타임아웃(``httpx.TransportError``)
+          또는 Manager 측 5xx. 재시도하면 성공할 수 있으므로 ``False``를
+          반환해 호출자가 버퍼링하게 한다.
+        * **영구적(permanent)** - ``/auth/token`` 또는 ``/telemetry``가 4xx로
+          거부(폐기된 디바이스, 위조/불일치 JWS 등). 재시도해도 동일하게
+          실패하는 것이 확정적이므로 :class:`PermanentTelemetryError`를 그대로
+          던진다 - 버퍼링하면 무한 재시도 루프가 된다.
+
+        Returns:
+            성공(2xx)이면 True, 일시적 실패면 False.
+
+        Raises:
+            PermanentTelemetryError: Manager가 4xx로 영구 거부한 경우.
         """
         try:
             token = await self.get_token()
-        except httpx.HTTPError:
-            return False
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            if 400 <= status < 500:
+                raise PermanentTelemetryError(
+                    f"auth/token permanently rejected (status={status}): {exc}",
+                    status_code=status,
+                ) from exc
+            return False  # Manager 측 5xx -> 일시적, 버퍼링 대상.
+        except httpx.TransportError:
+            return False  # 네트워크 계층 오류(연결 불가, 타임아웃 등) -> 일시적.
 
         jws_token = sign_payload(payload, self._key_pem)
         try:
@@ -190,9 +253,17 @@ class EdgeAgent:
                 json={"device_id": self.device_id, "jws": jws_token},
                 headers={"Authorization": f"Bearer {token}"},
             )
-        except httpx.HTTPError:
+        except httpx.TransportError:
             return False
-        return resp.status_code < 400
+
+        if resp.status_code < 400:
+            return True
+        if resp.status_code < 500:
+            raise PermanentTelemetryError(
+                f"telemetry permanently rejected (status={resp.status_code}): {resp.text}",
+                status_code=resp.status_code,
+            )
+        return False  # Manager 측 5xx -> 일시적, 버퍼링 대상.
 
     def _append_buffer(self, payload: Dict[str, Any]) -> None:
         self.buffer_path.parent.mkdir(parents=True, exist_ok=True)
@@ -200,17 +271,35 @@ class EdgeAgent:
             f.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
     async def send_telemetry(self, payload: Dict[str, Any]) -> bool:
-        """payload를 서명·전송한다. 전송 실패(transport/HTTP 오류) 시 로컬 버퍼에 적재한다."""
+        """payload를 서명·전송한다.
+
+        * 성공(2xx): ``True``.
+        * 일시적 실패(네트워크 오류, Manager 5xx): 로컬 버퍼(JSONL)에 적재하고
+          ``False``를 반환(나중에 :meth:`flush_buffer`로 재시도 가능).
+        * 영구 실패(4xx - 폐기된 디바이스, 위조/불일치 JWS 등): 버퍼링하지
+          않고 :class:`PermanentTelemetryError`를 그대로 전파한다 - 재시도해도
+          실패가 확정적인 요청을 무한정 쌓아두지 않기 위함이다.
+        """
         ok = await self._post_telemetry_once(payload)
         if not ok:
             self._append_buffer(payload)
         return ok
 
     async def flush_buffer(self) -> int:
-        """버퍼에 적재된 payload를 순서대로 재전송하고, 여전히 실패한 것만 남긴다.
+        """버퍼에 적재된 payload를 순서대로 재전송한다.
+
+        * 성공: 버퍼에서 제거.
+        * 일시적 실패(네트워크 오류, Manager 5xx): 버퍼에 그대로 남겨 다음
+          ``flush_buffer()`` 호출에서 다시 시도한다.
+        * 영구 실패(4xx, :class:`PermanentTelemetryError`): 재시도해도 결과가
+          바뀌지 않는 것이 확정적이므로 **드롭**한다(버퍼에 남기지 않음) -
+          그렇지 않으면 회복 불가능한 항목이 매 flush마다 무한 재시도되어
+          버퍼가 영원히 비워지지 않는다. 드롭된 항목은 별도의 dead-letter
+          저장 없이 그냥 버려진다(자체 판단 사항, 보고서에 명시).
 
         Returns:
-            성공적으로 재전송한 payload 개수.
+            성공적으로 재전송한 payload 개수(영구 실패로 드롭된 항목은
+            포함하지 않음).
         """
         if not self.buffer_path.exists():
             return 0
@@ -223,7 +312,10 @@ class EdgeAgent:
         sent = 0
         for line in lines:
             payload = json.loads(line)
-            ok = await self._post_telemetry_once(payload)
+            try:
+                ok = await self._post_telemetry_once(payload)
+            except PermanentTelemetryError:
+                continue  # 영구 실패: 드롭하고 다음 항목으로 진행.
             if ok:
                 sent += 1
             else:
