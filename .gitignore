@@ -1,0 +1,9 @@
+prototype-y1/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.db
+*.jsonl
+certs/
+.superpowers/
+.idea/
