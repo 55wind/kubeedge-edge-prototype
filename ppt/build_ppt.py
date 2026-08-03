@@ -244,7 +244,7 @@ def build_cover(prs):
     _set_run_font(run5, size=14, bold=False, color=NAVY_LIGHT)
     p6 = tf2.add_paragraph()
     run6 = p6.add_run()
-    run6.text = "저장소: logperch (branch: logperch) - 소스 포함 완전체 산출물"
+    run6.text = "저장소: logperch - 소스 포함 완전체 산출물"
     _set_run_font(run6, size=11, bold=False, color=GRAY_ACCENT)
 
 
@@ -529,7 +529,7 @@ ITEM_SLIDES = [
     ),
     dict(
         no=3,
-        title="대규모(1,000기) 디바이스 인증 AAA ★핵심",
+        title="대규모(1,000기) 디바이스 인증 AAA",
         requirement=[
             "1,000기 규모 디바이스에 대한 인증·인가·감사(AAA) 체계 구축",
         ],
@@ -625,7 +625,7 @@ ITEM_SLIDES = [
 
 def build_item_slide(prs, item, page_no):
     slide = add_slide(prs)
-    badge = "★" if item.get("highlight") else ""
+    badge = "★핵심" if item.get("highlight") else ""
     add_title_bar(slide, f"수행항목 {item['no']}. {item['title']} {badge}".rstrip())
 
     left = Inches(0.5)
@@ -852,7 +852,18 @@ def verify(path: Path) -> None:
                 f"(top+height={top + height}, slide_height={prs.slide_height})"
             )
 
-    print(f"검증 통과: {len(slides)}개 슬라이드, zip 무결성 OK, 모든 도형이 슬라이드 경계 내부에 위치.")
+    # 수행항목 3(★핵심, 슬라이드 7)의 제목에 "★"가 정확히 1개만 등장하는지 검증
+    # (title 문자열의 리터럴 ★핵심 + badge의 ★가 중복되는 회귀를 막기 위한 가드)
+    item3_slide = slides[6]  # 0-indexed: 슬라이드 7
+    title_shape = item3_slide.shapes[1]  # add_title_bar: [0]=배경 사각형, [1]=제목 텍스트박스
+    title_text = title_shape.text_frame.paragraphs[0].text
+    star_count = title_text.count("★")
+    assert star_count == 1, (
+        f"슬라이드 7 제목에 '★'가 {star_count}개 등장(기대: 1개) - title='{title_text}'"
+    )
+    assert "핵심" in title_text, f"슬라이드 7 제목에 '★핵심' 표기가 없음 - title='{title_text}'"
+
+    print(f"검증 통과: {len(slides)}개 슬라이드, zip 무결성 OK, 모든 도형이 슬라이드 경계 내부에 위치, 슬라이드 7 제목 ★ 1개.")
 
 
 def main():
