@@ -9,6 +9,7 @@
 - docs/perf/PERFORMANCE_REPORT.md (성능 실측치 - 여기 수치만 인용)
 - demo/DEMO_SCENARIO.md            (시연 전/후 비교 절차)
 - README.md                        (1차->2차 Before/After 표)
+- docs/screens/*.png               (실제 실행 화면 캡처 - ppt/capture_screens.py 로 재생성)
 
 실행:
     python ppt/build_ppt.py            # pptx (재)생성
@@ -39,6 +40,14 @@ OUTPUT_PATH = PPT_DIR / "ETRI_2차년도_수행항목_매핑.pptx"
 PERF_DIR = REPO_ROOT / "docs" / "perf"
 P95_CHART = PERF_DIR / "p95_latency_vs_n.png"
 THROUGHPUT_CHART = PERF_DIR / "throughput_vs_n.png"
+
+# 실행 화면 캡처 (ppt/capture_screens.py 로 재생성 - 실제 프로그램 출력)
+SCREENS_DIR = REPO_ROOT / "docs" / "screens"
+SCREEN_DEMO = SCREENS_DIR / "screen_demo.png"
+SCREEN_DEVICES = SCREENS_DIR / "screen_devices.png"
+SCREEN_AUDIT = SCREENS_DIR / "screen_audit.png"
+SCREEN_SWAGGER = SCREENS_DIR / "screen_swagger.png"
+SCREEN_FLEET = SCREENS_DIR / "screen_fleet.png"
 
 FONT_NAME = "맑은 고딕"
 
@@ -762,7 +771,135 @@ def build_demo_slide(prs):
 
 
 # ---------------------------------------------------------------------------
-# 슬라이드 14: 향후 계획
+# 슬라이드 14~17: 기능-화면 매핑 (실제 실행 화면 캡처)
+# ---------------------------------------------------------------------------
+
+def add_screen_picture(slide, img_path, left, top, max_w, max_h, caption=None):
+    """이미지를 (max_w, max_h) 박스 안에 비율 유지로 배치하고 캡션을 단다."""
+    from PIL import Image as PILImage  # Pillow는 matplotlib 의존성으로 이미 설치됨
+
+    with PILImage.open(img_path) as im:
+        w, h = im.size
+    caption_h = Inches(0.38) if caption else 0
+    scale = min(max_w / w, (max_h - caption_h) / h)
+    pic_w, pic_h = int(w * scale), int(h * scale)
+    x = left + int((max_w - pic_w) / 2)
+    # 박스 안에서 (이미지+캡션)을 세로 중앙 정렬해 하단 여백 쏠림을 방지한다.
+    y = top + int((max_h - caption_h - pic_h) / 2)
+    slide.shapes.add_picture(str(img_path), x, y, width=pic_w, height=pic_h)
+    if caption:
+        add_textbox(
+            slide, left, y + pic_h + Inches(0.06), max_w, Inches(0.32),
+            [(caption, 10.5, False, GRAY_BODY)], align=PP_ALIGN.CENTER,
+        )
+    return pic_h
+
+
+SCREEN_MAP_ROWS = [
+    ("항목 ⑦·④  보안 전·후 비교 시연",
+     "demo/run_demo.py 실행 콘솔 - INSECURE 모드 수용(200) vs 보안 모드 거부(401) + 감사로그 tail", "슬라이드 15"),
+    ("항목 ③  디바이스 등록·인가 관리 (AAA)",
+     "GET /api/v1/devices 관리 API 응답 - 등록 상태(approved/revoked)·인증서 시리얼·last_seen", "슬라이드 16"),
+    ("항목 ③  Accounting 감사로그",
+     "GET /api/v1/audit - 등록/인증 성공/위조 JWS 거부/폐기 후 인증 실패 실기록", "슬라이드 16"),
+    ("항목 ⑥  연동 인터페이스 (R&R)",
+     "Swagger UI(/docs) - Manager 전체 API 계약 (docs/04 인터페이스 명세와 1:1)", "슬라이드 17"),
+    ("항목 ①·③  대규모(1,000기) 인증 검증",
+     "가상 디바이스 일괄 등록·인증·전송 CLI(python -m eam.simulator.fleet) - 성능 차트는 슬라이드 12", "슬라이드 17"),
+]
+
+
+def build_screen_map_overview(prs):
+    slide = add_slide(prs)
+    add_title_bar(slide, "기능-화면 매핑 총괄", "모든 캡처는 실제 실행 화면 - ppt/capture_screens.py 로 재생성 가능")
+
+    top = Inches(1.2)
+    row_h = Inches(1.02)
+    for i, (feature, screen, ref) in enumerate(SCREEN_MAP_ROWS):
+        y = top + i * row_h
+        add_rect(slide, Inches(0.5), y, Inches(3.5), row_h - Inches(0.1), fill=NAVY_MID)
+        ftb = slide.shapes.add_textbox(Inches(0.62), y, Inches(3.26), row_h - Inches(0.1))
+        ftf = ftb.text_frame
+        ftf.word_wrap = True
+        ftf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        frun = ftf.paragraphs[0].add_run()
+        frun.text = feature
+        _set_run_font(frun, size=12.5, bold=True, color=WHITE)
+
+        add_rect(slide, Inches(4.08), y, Inches(7.15), row_h - Inches(0.1),
+                 fill=None, line=GRAY_LINE, line_width=Pt(0.75))
+        stb = slide.shapes.add_textbox(Inches(4.2), y, Inches(6.9), row_h - Inches(0.1))
+        stf = stb.text_frame
+        stf.word_wrap = True
+        stf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        srun = stf.paragraphs[0].add_run()
+        srun.text = screen
+        _set_run_font(srun, size=12, color=GRAY_BODY)
+
+        add_rect(slide, Inches(11.31), y, Inches(1.52), row_h - Inches(0.1), fill=GRAY_ACCENT)
+        rtb = slide.shapes.add_textbox(Inches(11.31), y, Inches(1.52), row_h - Inches(0.1))
+        rtf = rtb.text_frame
+        rtf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        rp = rtf.paragraphs[0]
+        rp.alignment = PP_ALIGN.CENTER
+        rrun = rp.add_run()
+        rrun.text = ref
+        _set_run_font(rrun, size=12, bold=True, color=NAVY_DARK)
+
+    note_top = top + len(SCREEN_MAP_ROWS) * row_h + Inches(0.1)
+    add_textbox(
+        slide, Inches(0.5), note_top, Inches(12.33), Inches(0.6),
+        [("캡처 화면의 모든 데이터(디바이스·감사 이벤트·지연 수치)는 실제 시스템 실행 결과이며, "
+          "docs/screens/ 에 원본 PNG로 저장되어 있다.", 11, False, GRAY_BODY)],
+    )
+    add_footer(slide, 14)
+
+
+def build_screen_demo(prs):
+    slide = add_slide(prs)
+    add_title_bar(slide, "화면 1. 보안 적용 전·후 비교 시연 (수행항목 ⑦·④)",
+                  "demo/run_demo.py --fast 실제 실행 출력")
+    add_screen_picture(
+        slide, SCREEN_DEMO, Inches(0.5), Inches(1.2), Inches(12.33), Inches(5.55),
+        caption="BEFORE: 미인증 주입 HTTP 200 수용 -> AFTER: 동일 요청 401 거부, 정식 등록·인증 디바이스만 성공, 하단은 감사로그 tail",
+    )
+    add_footer(slide, 15)
+
+
+def build_screen_admin(prs):
+    slide = add_slide(prs)
+    add_title_bar(slide, "화면 2. 디바이스 관리·감사로그 조회 (수행항목 ③ AAA)",
+                  "Manager 관리 API 실제 응답 - RBAC(operator/admin) 적용")
+    half_w = Inches(6.05)
+    add_screen_picture(
+        slide, SCREEN_DEVICES, Inches(0.5), Inches(1.2), half_w, Inches(5.35),
+        caption="GET /api/v1/devices - 등록 상태·인증서 시리얼·last_seen (revoked 상태 포함)",
+    )
+    add_screen_picture(
+        slide, SCREEN_AUDIT, Inches(0.5) + half_w + Inches(0.23), Inches(1.2), half_w, Inches(5.35),
+        caption="GET /api/v1/audit - 등록/인증 성공, 위조 JWS 거부, 폐기 후 인증 실패 실기록",
+    )
+    add_footer(slide, 16)
+
+
+def build_screen_interface(prs):
+    slide = add_slide(prs)
+    add_title_bar(slide, "화면 3. 연동 인터페이스·대규모 인증 시뮬레이터 (수행항목 ⑥·①·③)",
+                  "Swagger UI(/docs) + 가상 디바이스 fleet CLI 실제 실행 출력")
+    half_w = Inches(6.05)
+    add_screen_picture(
+        slide, SCREEN_SWAGGER, Inches(0.5), Inches(1.2), half_w, Inches(5.35),
+        caption="Swagger UI - Manager 전체 API 계약 (docs/04 §2 인터페이스 명세와 1:1 대응)",
+    )
+    add_screen_picture(
+        slide, SCREEN_FLEET, Inches(0.5) + half_w + Inches(0.23), Inches(1.2), half_w, Inches(5.35),
+        caption="python -m eam.simulator.fleet - N기 일괄 등록·인증·전송, 단계별 p50/p95/p99 산출",
+    )
+    add_footer(slide, 17)
+
+
+# ---------------------------------------------------------------------------
+# 슬라이드 18: 향후 계획
 # ---------------------------------------------------------------------------
 
 def build_future(prs):
@@ -801,7 +938,7 @@ def build_future(prs):
         body_size=12.5,
     )
 
-    add_footer(slide, 14)
+    add_footer(slide, 18)
 
 
 # ---------------------------------------------------------------------------
@@ -821,7 +958,11 @@ def build_presentation() -> Presentation:
         build_item_slide(prs, item, page_no=5 + idx)
     build_performance(prs)                 # 12
     build_demo_slide(prs)                  # 13
-    build_future(prs)                      # 14
+    build_screen_map_overview(prs)         # 14
+    build_screen_demo(prs)                 # 15
+    build_screen_admin(prs)                # 16
+    build_screen_interface(prs)            # 17
+    build_future(prs)                      # 18
 
     return prs
 
@@ -835,7 +976,7 @@ def verify(path: Path) -> None:
     # (b) 재로드 + 슬라이드 수/텍스트프레임 경계 검증
     prs = Presentation(str(path))
     slides = list(prs.slides)
-    assert len(slides) == 14, f"슬라이드 수 불일치: {len(slides)} (기대: 14)"
+    assert len(slides) == 18, f"슬라이드 수 불일치: {len(slides)} (기대: 18)"
 
     for si, slide in enumerate(slides, start=1):
         for shape in slide.shapes:
