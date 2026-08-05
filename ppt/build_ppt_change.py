@@ -4,7 +4,11 @@
 (1) 기존 -> 현재 변화 요약 밴드, (2) 그 변화가 실제로 담긴 실행 화면 캡처만 싣는다.
 표지/아키텍처/향후계획 등 화면이 없는 페이지는 넣지 않는다 (요구사항).
 
-캡처 원본: docs/screens/*.png (ppt/capture_screens.py 로 재생성),
+캡처 원본은 모두 docs/screens/*.png 이며, 각 재생성 스크립트는 다음과 같다:
+  ppt/capture_platform_screens.py - 실행 중인 Manager를 Swagger UI에서 직접 호출한 화면
+  ppt/capture_k8s_screens.py      - 실제 Kubernetes 클러스터 상태·Dashboard·파드 로그
+  ppt/capture_cli_screens.py      - 실제 CLI 실행 출력(demo/gateway/fleet)
+  ppt/capture_screens.py          - 문서·매니페스트 대조 화면 2종
 성능 차트: docs/perf/*.png (bench/report.py 로 재생성).
 
 실행:
@@ -19,7 +23,7 @@ from pathlib import Path
 
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE
-from pptx.enum.text import MSO_ANCHOR
+from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Emu, Inches, Pt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -31,8 +35,6 @@ from build_ppt import (  # noqa: E402  (동일 디렉터리 헬퍼 재사용)
     P95_CHART,
     SCREEN_AUDIT,
     SCREEN_DEMO,
-    SCREEN_DEVICES,
-    SCREEN_FLEET,
     SCREEN_SWAGGER,
     SCREENS_DIR,
     SLIDE_H,
@@ -51,6 +53,12 @@ OUTPUT_PATH = REPO_ROOT / "ppt" / "ETRI_2차년도_기존-현재_화면구성.pp
 SCREEN_COMM = SCREENS_DIR / "screen_comm_decision.png"
 SCREEN_K8S_YAML = SCREENS_DIR / "screen_k8s_yaml.png"
 SCREEN_GATEWAY = SCREENS_DIR / "screen_gateway.png"
+# 실제 kind 클러스터 / 실행 중인 Manager의 Swagger UI 캡처
+SCREEN_K8S_PODS = SCREENS_DIR / "k8s_pods.png"
+SCREEN_K8S_DASHBOARD = SCREENS_DIR / "k8s_dashboard.png"
+SCREEN_K8S_AGENT_LOG = SCREENS_DIR / "k8s_agent_log.png"
+SCREEN_REGISTER = SCREENS_DIR / "platform_register.png"
+SCREEN_RBAC_DENIED = SCREENS_DIR / "platform_rbac_denied.png"
 
 # (번호, 제목, 기존 불릿, 현재 불릿, [(이미지, 캡션), ...])
 CHANGE_SLIDES = [
@@ -61,12 +69,12 @@ CHANGE_SLIDES = [
             "앱 이미지는 저장소 밖에서 수동 빌드 (소스 미포함)",
         ],
         [
-            "보안 코어 모듈을 K8s에 탑재 - eam-manager:v2/eam-agent:v2 이미지·매니페스트·Dockerfile 포함",
+            "보안 코어 모듈이 실제 K8s 클러스터에서 구동 - manager/agent×2/gateway 4개 파드 Running",
             "가상 디바이스 실측(N=10~200) + 1,000기 M/M/c 외삽: ρ=0.70 안정, 대기 p95 372.6ms, 권장 replica 1",
         ],
         [
+            (SCREEN_K8S_PODS, "실제 클러스터 상태 - edge 라벨 노드에 agent/gateway 배치, manager NodePort 30443"),
             (P95_CHART, "실측 auth p95 지연 vs N (bench/run_bench.py 산출)"),
-            (SCREEN_FLEET, "가상 디바이스 일괄 등록·인증·전송 실행 화면 (단계별 p50/p95/p99)"),
         ],
     ),
     (
@@ -92,8 +100,9 @@ CHANGE_SLIDES = [
             "위조 JWS 거부·폐기 즉시 차단이 감사로그에 실기록 + 실측 기반 1,000기 외삽 검증",
         ],
         [
-            (SCREEN_DEVICES, "GET /devices - 등록 상태·인증서 시리얼·last_seen (revoked 포함)"),
-            (SCREEN_AUDIT, "GET /audit - 인증 성공/위조 JWS 거부/폐기 후 인증 실패 실기록"),
+            (SCREEN_REGISTER, "Authentication - 등록 요청에 X.509 인증서가 실제 발급된 응답"),
+            (SCREEN_RBAC_DENIED, "Authorization - operator 역할의 admin 전용 API 호출이 403으로 거부"),
+            (SCREEN_AUDIT, "Accounting - 인증 성공/위조 거부/폐기가 감사로그에 실기록"),
         ],
     ),
     (
@@ -106,7 +115,11 @@ CHANGE_SLIDES = [
             "4계층(Device-Agent-Manager-Backend) 보안 모듈을 KubeEdge 배포 구조에 적용",
             "edge 라벨 스케줄 + Secret 자동 생성·참조 + __CLOUD_IP__ 치환 (deploy/demo-setup-v2.sh)",
         ],
-        [(SCREEN_K8S_YAML, "agent 매니페스트 1차년도(좌) vs 2차년도(우) - 하드코딩 제거, Secret·edge 라벨 적용")],
+        [
+            (SCREEN_K8S_DASHBOARD, "Kubernetes Dashboard - edge-auth 네임스페이스에 4개 Deployment 구동"),
+            (SCREEN_K8S_AGENT_LOG, "agent 파드 로그 - 실제 등록→토큰→텔레메트리 사이클 성공"),
+            (SCREEN_K8S_YAML, "매니페스트 1차년도(좌) vs 2차년도(우) - 하드코딩 제거, Secret·edge 라벨"),
+        ],
     ),
     (
         5, "네트워크 구성·주소 체계 (공인 IP)",
@@ -194,23 +207,63 @@ def _comparison_band(slide, before_lines, after_lines):
         _set_run_font(r, size=11, color=WHITE)
 
 
+CAPTION_H = Inches(0.62)
+
+
+def _scaled_size(img_path, max_w, max_h):
+    from PIL import Image as PILImage
+
+    with PILImage.open(img_path) as im:
+        w, h = im.size
+    scale = min(max_w / w, max_h / h)
+    return int(w * scale), int(h * scale)
+
+
+def place_screen(slide, img_path, left, top, max_w, max_h, caption, caption_y):
+    """Top-align the image in its column and put the caption on a shared baseline.
+
+    Screens have different aspect ratios, so centring each one vertically would
+    scatter the captions. Images hang from a common top edge and every caption in
+    the row sits at ``caption_y`` (just below the tallest image), which keeps the
+    row aligned without leaving dead space under the short ones.
+    """
+    pic_w, pic_h = _scaled_size(img_path, max_w, max_h)
+    slide.shapes.add_picture(str(img_path), left + int((max_w - pic_w) / 2), top,
+                             width=pic_w, height=pic_h)
+    box = slide.shapes.add_textbox(left, caption_y, max_w, CAPTION_H)
+    tf = box.text_frame
+    tf.word_wrap = True
+    tf.vertical_anchor = MSO_ANCHOR.TOP
+    para = tf.paragraphs[0]
+    para.alignment = PP_ALIGN.CENTER
+    run = para.add_run()
+    run.text = caption
+    _set_run_font(run, size=10.5, color=GRAY_BODY)
+
+
 def build_change_slide(prs, no, title, before, after, screens, page_no):
     slide = add_slide(prs)
     add_title_bar(slide, f"{no}. {title}",
-                  "ETRI 2차 킥오프 매핑 자료 기준 - 기존(1차년도) → 현재(2차년도), 캡처는 실제 실행 화면")
+                  "ETRI 2차 킥오프 매핑 자료 기준 - 기존(1차년도) → 현재(2차년도), "
+                  "캡처는 실제 플랫폼 화면(Swagger UI·Kubernetes Dashboard·실제 CLI 출력)")
     _comparison_band(slide, before, after)
 
     img_top = Inches(2.78)
     img_h = Inches(4.32)
-    if len(screens) == 1:
+    n = len(screens)
+    if n == 1:
         img_path, caption = screens[0]
         add_screen_picture(slide, img_path, Inches(0.5), img_top, Inches(12.33), img_h,
                            caption=caption)
     else:
-        half_w = Inches(6.05)
-        for i, (img_path, caption) in enumerate(screens[:2]):
-            x = Inches(0.5) + i * (half_w + Inches(0.23))
-            add_screen_picture(slide, img_path, x, img_top, half_w, img_h, caption=caption)
+        gap = Inches(0.2)
+        col_w = int((Inches(12.33) - gap * (n - 1)) / n)
+        avail_h = img_h - CAPTION_H
+        tallest = max(_scaled_size(p, col_w, avail_h)[1] for p, _ in screens)
+        caption_y = img_top + tallest + Inches(0.08)
+        for i, (img_path, caption) in enumerate(screens):
+            x = Inches(0.5) + i * (col_w + gap)
+            place_screen(slide, img_path, x, img_top, col_w, avail_h, caption, caption_y)
 
     add_footer(slide, page_no)
 

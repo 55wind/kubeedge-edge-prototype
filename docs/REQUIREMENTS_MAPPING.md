@@ -20,8 +20,12 @@ Task 7(매핑 PPT)와 Task 8(최종 검수)이 기준으로 삼는 문서. 전�
 
 ## Task 7(PPT) 관련 참고
 
-`ppt/build_ppt.py`(재실행 가능한 생성 스크립트) + `ppt/ETRI_2차년도_수행항목_매핑.pptx`(18슬라이드, 16:9)가 생성 완료됐다. 표지/수행범위 재정리/Before-After/4계층 아키텍처(도형)/수행항목 1~7(위 표의 코드·문서·테스트 경로를 슬라이드 5~11 산출물 근거로 그대로 재사용)/성능 검증(PNG 차트+외삽 결론)/시연 시나리오/기능-화면 매핑(총괄표+실제 실행 화면 캡처 3장, `docs/screens/*.png` — `ppt/capture_screens.py`로 재생성)/향후 계획 순으로 구성된다. `python ppt/build_ppt.py`(생성+검증) 또는 `python ppt/build_ppt.py --verify`(검증만)로 재현 가능하며, 검증은 18슬라이드 수·zip 무결성·전 도형의 슬라이드 경계 내 위치를 확인한다.
+`ppt/build_ppt.py`(재실행 가능한 생성 스크립트) + `ppt/ETRI_2차년도_수행항목_매핑.pptx`(19슬라이드, 16:9)가 생성 완료됐다. 표지/수행범위 재정리/Before-After/4계층 아키텍처(도형)/수행항목 1~7(위 표의 코드·문서·테스트 경로를 슬라이드 5~11 산출물 근거로 그대로 재사용)/성능 검증(PNG 차트+외삽 결론)/시연 시나리오/기능-화면 매핑(총괄표+실제 플랫폼 화면 4장: Swagger UI·Kubernetes Dashboard·실제 CLI 출력, `docs/screens/*.png` — `ppt/capture_platform_screens.py`/`capture_k8s_screens.py`/`capture_cli_screens.py`/`capture_screens.py`로 재생성)/향후 계획 순으로 구성된다. `python ppt/build_ppt.py`(생성+검증) 또는 `python ppt/build_ppt.py --verify`(검증만)로 재현 가능하며, 검증은 19슬라이드 수·zip 무결성·전 도형의 슬라이드 경계 내 위치를 확인한다.
 
 ## Task 8(최종 검수) 관련 참고
 
 Task 8은 본 표를 기준으로 (a) 전체 `pytest tests/ -q` 재실행, (b) `python demo/run_demo.py --fast` exit 0 확인, (c) `python ppt/build_ppt.py`(Task 7 완료 후) 재실행 검증, (d) whole-branch 코드리뷰로 7개 항목 커버리지를 최종 대조한다.
+
+## 기존→현재 화면 구성 덱
+
+`ppt/ETRI_2차년도_기존-현재_화면구성.pptx`(7슬라이드) — 수행항목 1~7을 각 1페이지로, 기존(1차년도)→현재(2차년도) 변화 요약과 그 변화가 담긴 실제 플랫폼 화면만으로 구성한다. `python ppt/build_ppt_change.py`로 재생성하며, 검증은 7슬라이드 수·전 페이지 캡처 포함 여부·zip 무결성·도형 경계를 확인한다.

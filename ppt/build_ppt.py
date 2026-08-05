@@ -44,10 +44,14 @@ THROUGHPUT_CHART = PERF_DIR / "throughput_vs_n.png"
 # 실행 화면 캡처 (ppt/capture_screens.py 로 재생성 - 실제 프로그램 출력)
 SCREENS_DIR = REPO_ROOT / "docs" / "screens"
 SCREEN_DEMO = SCREENS_DIR / "screen_demo.png"
-SCREEN_DEVICES = SCREENS_DIR / "screen_devices.png"
-SCREEN_AUDIT = SCREENS_DIR / "screen_audit.png"
-SCREEN_SWAGGER = SCREENS_DIR / "screen_swagger.png"
+# 실제 Manager를 Swagger UI에서 직접 실행해 얻은 화면 (ppt/capture_platform_screens.py)
+SCREEN_DEVICES = SCREENS_DIR / "platform_devices.png"
+SCREEN_AUDIT = SCREENS_DIR / "platform_audit.png"
+SCREEN_SWAGGER = SCREENS_DIR / "platform_swagger_overview.png"
 SCREEN_FLEET = SCREENS_DIR / "screen_fleet.png"
+# 실제 kind 기반 Kubernetes 클러스터 캡처 (ppt/capture_k8s_screens.py)
+SCREEN_K8S_DASHBOARD = SCREENS_DIR / "k8s_dashboard.png"
+SCREEN_K8S_PODS = SCREENS_DIR / "k8s_pods.png"
 
 FONT_NAME = "맑은 고딕"
 
@@ -806,15 +810,18 @@ SCREEN_MAP_ROWS = [
      "Swagger UI(/docs) - Manager 전체 API 계약 (docs/04 인터페이스 명세와 1:1)", "슬라이드 17"),
     ("항목 ①·③  대규모(1,000기) 인증 검증",
      "가상 디바이스 일괄 등록·인증·전송 CLI(python -m eam.simulator.fleet) - 성능 차트는 슬라이드 12", "슬라이드 17"),
+    ("항목 ①·④  실제 K8s 클러스터 구동",
+     "Kubernetes Dashboard(edge-auth 네임스페이스)와 kubectl 실제 상태 - manager/agent/gateway 파드 Running", "슬라이드 18"),
 ]
 
 
 def build_screen_map_overview(prs):
     slide = add_slide(prs)
-    add_title_bar(slide, "기능-화면 매핑 총괄", "모든 캡처는 실제 실행 화면 - ppt/capture_screens.py 로 재생성 가능")
+    add_title_bar(slide, "기능-화면 매핑 총괄",
+                  "모든 캡처는 실제 플랫폼 화면 - Swagger UI·Kubernetes Dashboard·실제 CLI 출력 (ppt/capture_*.py 로 재생성)")
 
     top = Inches(1.2)
-    row_h = Inches(1.02)
+    row_h = Inches(0.88)
     for i, (feature, screen, ref) in enumerate(SCREEN_MAP_ROWS):
         y = top + i * row_h
         add_rect(slide, Inches(0.5), y, Inches(3.5), row_h - Inches(0.1), fill=NAVY_MID)
@@ -869,7 +876,7 @@ def build_screen_demo(prs):
 def build_screen_admin(prs):
     slide = add_slide(prs)
     add_title_bar(slide, "화면 2. 디바이스 관리·감사로그 조회 (수행항목 ③ AAA)",
-                  "Manager 관리 API 실제 응답 - RBAC(operator/admin) 적용")
+                  "실행 중인 Manager의 Swagger UI에서 직접 호출한 실제 응답 - RBAC(operator/admin) 적용")
     half_w = Inches(6.05)
     add_screen_picture(
         slide, SCREEN_DEVICES, Inches(0.5), Inches(1.2), half_w, Inches(5.35),
@@ -896,6 +903,22 @@ def build_screen_interface(prs):
         caption="python -m eam.simulator.fleet - N기 일괄 등록·인증·전송, 단계별 p50/p95/p99 산출",
     )
     add_footer(slide, 17)
+
+
+def build_screen_k8s(prs):
+    slide = add_slide(prs)
+    add_title_bar(slide, "화면 4. 실제 Kubernetes 클러스터 구동 (수행항목 ①·④)",
+                  "kind 기반 2노드 클러스터(etri-edge)에 본 저장소 k8s/*.yaml 을 그대로 배포한 실제 상태")
+    half_w = Inches(6.05)
+    add_screen_picture(
+        slide, SCREEN_K8S_DASHBOARD, Inches(0.5), Inches(1.2), half_w, Inches(5.35),
+        caption="Kubernetes Dashboard - edge-auth 네임스페이스, manager/agent×2/gateway 4개 Deployment Running",
+    )
+    add_screen_picture(
+        slide, SCREEN_K8S_PODS, Inches(0.5) + half_w + Inches(0.23), Inches(1.2), half_w, Inches(5.35),
+        caption="kubectl 실제 출력 - edge 라벨 노드에 agent/gateway 배치, manager NodePort 30443",
+    )
+    add_footer(slide, 18)
 
 
 # ---------------------------------------------------------------------------
@@ -938,7 +961,7 @@ def build_future(prs):
         body_size=12.5,
     )
 
-    add_footer(slide, 18)
+    add_footer(slide, 19)
 
 
 # ---------------------------------------------------------------------------
@@ -962,7 +985,8 @@ def build_presentation() -> Presentation:
     build_screen_demo(prs)                 # 15
     build_screen_admin(prs)                # 16
     build_screen_interface(prs)            # 17
-    build_future(prs)                      # 18
+    build_screen_k8s(prs)                  # 18
+    build_future(prs)                      # 19
 
     return prs
 
@@ -976,7 +1000,7 @@ def verify(path: Path) -> None:
     # (b) 재로드 + 슬라이드 수/텍스트프레임 경계 검증
     prs = Presentation(str(path))
     slides = list(prs.slides)
-    assert len(slides) == 18, f"슬라이드 수 불일치: {len(slides)} (기대: 18)"
+    assert len(slides) == 19, f"슬라이드 수 불일치: {len(slides)} (기대: 19)"
 
     for si, slide in enumerate(slides, start=1):
         for shape in slide.shapes:

@@ -37,6 +37,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509 import load_pem_x509_certificate
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer
 
 from eam.common import config as config_module
 from eam.common import pki
@@ -199,6 +200,9 @@ def create_app(
     )
 
     app = FastAPI(title="EAM Manager", version="0.2.0")
+    # Declares "Bearer <JWT>" in the OpenAPI security schema without enforcing it
+    # (auto_error=False): enforcement stays in ``authenticated`` below.
+    bearer_scheme = HTTPBearer(auto_error=False)
     app.state.cfg = cfg
     app.state.ca = ca
     app.state.store = store
@@ -279,8 +283,16 @@ def create_app(
             raise HTTPException(status_code=401, detail=f"invalid token: {exc}") from exc
         return schemas.Identity(sub=str(payload.get("sub", "")), role=str(payload.get("role", "")))
 
-    async def authenticated(request: Request) -> schemas.Identity:
+    async def authenticated(
+        request: Request,
+        _scheme: Optional[object] = Depends(bearer_scheme),
+    ) -> schemas.Identity:
         """Resolve caller identity and enforce RBAC for the current route.
+
+        ``_scheme`` only declares the bearer requirement in the OpenAPI schema
+        (so API consumers and Swagger UI can supply a token); it never enforces
+        anything on its own — ``auto_error=False`` keeps the checks below, and
+        INSECURE_MODE bypass, as the single source of truth.
 
         Bypassed entirely when INSECURE_MODE is enabled (before/after demo).
         """
