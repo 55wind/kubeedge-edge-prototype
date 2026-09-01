@@ -224,7 +224,12 @@ def test_send_telemetry_failure_buffers_then_flush_resends(tmp_path, monkeypatch
             if line.strip()
         ]
         assert len(buffered_lines) == 1
-        assert json.loads(buffered_lines[0]) == {"metric": "cpu", "value": 1}
+        # jti/iat are stamped before buffering so the flushed retry reuses the
+        # same nonce (the Manager de-dups a lost-ack retry rather than
+        # double-counting it).
+        buffered = json.loads(buffered_lines[0])
+        assert buffered["metric"] == "cpu" and buffered["value"] == 1
+        assert isinstance(buffered["jti"], str) and isinstance(buffered["iat"], int)
 
         # Manager must not have received anything yet.
         assert app.state.store.list_telemetry(device_id="agent-dev-001") == []
@@ -242,7 +247,9 @@ def test_send_telemetry_failure_buffers_then_flush_resends(tmp_path, monkeypatch
     rows = app.state.store.list_telemetry(device_id="agent-dev-001")
     assert len(rows) == 1
     payload = json.loads(rows[0].payload_json)
-    assert payload == {"metric": "cpu", "value": 1}
+    # The agent injects jti/iat replay-protection claims alongside the app data.
+    assert payload["metric"] == "cpu" and payload["value"] == 1
+    assert isinstance(payload["jti"], str) and isinstance(payload["iat"], int)
 
 
 def test_flush_buffer_with_nothing_buffered_is_a_noop(tmp_path, monkeypatch):
@@ -396,7 +403,9 @@ def test_new_agent_instance_resumes_credentials_from_certs_dir_without_enroll(
 
     rows = app.state.store.list_telemetry(device_id="resume-dev")
     assert len(rows) == 1
-    assert json.loads(rows[0].payload_json) == {"metric": "cpu", "value": 7}
+    payload = json.loads(rows[0].payload_json)
+    assert payload["metric"] == "cpu" and payload["value"] == 7
+    assert isinstance(payload["jti"], str) and isinstance(payload["iat"], int)
 
 
 def test_enroll_short_circuits_when_credentials_already_loaded_from_disk(

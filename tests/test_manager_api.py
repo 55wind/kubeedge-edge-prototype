@@ -6,11 +6,19 @@ the task brief's in-process testing guidance.
 
 from __future__ import annotations
 
+import time
+import uuid
+
 from fastapi.testclient import TestClient
 
 from eam.common import pki
 from eam.common.jws import sign_payload
 from eam.manager.app import create_app
+
+
+def _fresh(payload: dict) -> dict:
+    """Add the jti/iat replay-protection claims the Manager now requires."""
+    return {**payload, "jti": uuid.uuid4().hex, "iat": int(time.time())}
 
 ADMIN_USER = "test-admin"
 ADMIN_PASS = "test-admin-pass"
@@ -98,7 +106,7 @@ def test_full_roundtrip_register_cert_token_telemetry(tmp_path, monkeypatch):
     assert token_body["expires_in"] == 900
     device_token = token_body["access_token"]
 
-    payload = {"device_id": "dev-001", "metric": "cpu", "value": 42}
+    payload = _fresh({"device_id": "dev-001", "metric": "cpu", "value": 42})
     jws = sign_payload(payload, dev_key_pem)
 
     tele_resp = client.post(

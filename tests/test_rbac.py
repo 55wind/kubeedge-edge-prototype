@@ -55,7 +55,15 @@ def test_device_id_segment_normalizes_regardless_of_value():
 
 
 def test_method_mismatch_is_not_confused_with_allowed_route():
-    # GET /api/v1/telemetry is not in the matrix at all -> defaults open,
-    # but POST /api/v1/telemetry with a non-device/admin role must be denied.
+    # GET and POST /api/v1/telemetry are distinct matrix entries with
+    # different role sets: reading is operator/admin, submitting is device/admin.
     assert rbac.authorize("operator", "GET", "/api/v1/telemetry") is True
     assert rbac.authorize("operator", "POST", "/api/v1/telemetry") is False
+
+
+def test_telemetry_read_is_operator_admin_only():
+    # The telemetry read API (platform observability) mirrors /devices:
+    # operators and admins may read stored telemetry, devices may not.
+    assert rbac.authorize("operator", "GET", "/api/v1/telemetry") is True
+    assert rbac.authorize("admin", "GET", "/api/v1/telemetry") is True
+    assert rbac.authorize("device", "GET", "/api/v1/telemetry") is False
