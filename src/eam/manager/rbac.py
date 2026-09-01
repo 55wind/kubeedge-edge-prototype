@@ -18,6 +18,7 @@ from typing import Dict, FrozenSet, Tuple
 
 RBAC_MATRIX: Dict[Tuple[str, str], FrozenSet[str]] = {
     ("POST", "/api/v1/telemetry"): frozenset({"device", "admin"}),
+    ("GET", "/api/v1/telemetry"): frozenset({"operator", "admin"}),
     ("GET", "/api/v1/devices"): frozenset({"operator", "admin"}),
     ("POST", "/api/v1/devices/{id}/approve"): frozenset({"admin"}),
     ("POST", "/api/v1/devices/{id}/revoke"): frozenset({"admin"}),

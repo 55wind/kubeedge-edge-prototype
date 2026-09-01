@@ -9,7 +9,9 @@ Endpoints (prefix ``/api/v1`` unless noted):
 * ``POST /devices/register``           - bootstrap-token gated device registration.
 * ``POST /auth/token``                 - cert -> device bearer JWT (role=device).
 * ``POST /auth/operator``              - username/password -> operator|admin JWT.
-* ``POST /telemetry``                  - bearer JWT + device-signed JWS payload.
+* ``POST /telemetry``                  - bearer JWT + device-signed JWS payload
+                                         (with jti/iat replay protection).
+* ``GET  /telemetry``                  - RBAC: operator, admin (read stored data).
 * ``GET  /devices``                    - RBAC: operator, admin.
 * ``POST /devices/{device_id}/approve``- RBAC: admin.
 * ``POST /devices/{device_id}/revoke`` - RBAC: admin.
@@ -560,12 +562,72 @@ def create_app(
             )
             raise HTTPException(status_code=401, detail="JWS verification failed") from exc
 
+        # -- replay/freshness enforcement --------------------------------
+        # A valid signature proves integrity+origin but NOT freshness: an
+        # attacker who captures a legitimately signed telemetry message can
+        # resubmit it verbatim (the signature stays valid). We require every
+        # telemetry JWS to carry a unique nonce (``jti``) and an issue time
+        # (``iat``), accept it only if ``iat`` is within the configured window,
+        # and reject any ``jti`` already accepted for this device.
+        jti = payload.get("jti")
+        iat = payload.get("iat")
+        if not isinstance(jti, str) or not jti or not isinstance(iat, (int, float)):
+            app.state.audit.record(
+                event="telemetry_reject", device_id=body.device_id, outcome="fail",
+                detail="missing replay-protection claims (jti/iat)",
+            )
+            raise HTTPException(
+                status_code=401, detail="telemetry missing replay-protection claims (jti/iat)"
+            )
+        now = time.time()
+        window = app.state.cfg.telemetry_replay_window_seconds
+        # Small forward tolerance for clock skew; ``window`` bounds how stale
+        # (or how long buffered) an accepted message may be.
+        if iat > now + 60 or iat < now - window:
+            app.state.audit.record(
+                event="telemetry_reject", device_id=body.device_id, outcome="fail",
+                detail=f"stale telemetry (iat outside {window}s freshness window)",
+            )
+            raise HTTPException(status_code=401, detail="stale telemetry (iat outside freshness window)")
+        if not store.record_jti(body.device_id, jti, exp_epoch=iat + window, now_epoch=now):
+            app.state.audit.record(
+                event="telemetry_reject", device_id=body.device_id, outcome="fail",
+                detail=f"replay detected (duplicate jti={jti})",
+            )
+            raise HTTPException(status_code=409, detail="replay detected (duplicate jti)")
+
         store.insert_telemetry(body.device_id, json.dumps(payload, ensure_ascii=False), verified=True)
         store.touch_last_seen(body.device_id)
         app.state.audit.record(
             event="telemetry_accept", device_id=body.device_id, outcome="success", detail="",
         )
         return schemas.TelemetryResponse(status="accepted")
+
+    @router.get("/telemetry", response_model=list[schemas.TelemetryOut])
+    async def list_telemetry(
+        device_id: Optional[str] = None,
+        limit: int = 100,
+        identity: schemas.Identity = Depends(authenticated),
+    ) -> list[schemas.TelemetryOut]:
+        """Read stored telemetry (RBAC: operator, admin).
+
+        Closes the platform-observability gap: the data a device actually
+        delivered — and whether its JWS was cryptographically verified — is
+        inspectable in-platform (Swagger UI / API), not only in the DB.
+        """
+        out: list[schemas.TelemetryOut] = []
+        for r in store.list_telemetry(device_id=device_id, limit=limit):
+            try:
+                payload = json.loads(r.payload_json)
+            except json.JSONDecodeError:
+                payload = {"raw": r.payload_json}
+            out.append(
+                schemas.TelemetryOut(
+                    id=r.id, device_id=r.device_id, ts=r.ts,
+                    verified=r.verified, payload=payload,
+                )
+            )
+        return out
 
     @router.get("/devices", response_model=list[schemas.DeviceOut])
     async def list_devices(

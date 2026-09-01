@@ -15,6 +15,7 @@ import json
 import os
 import random
 import time
+import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
@@ -274,6 +275,26 @@ class EdgeAgent:
             )
         return False  # Manager 측 5xx -> 일시적, 버퍼링 대상.
 
+    @staticmethod
+    def _ensure_replay_claims(payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Return ``payload`` guaranteed to carry a ``jti`` nonce and ``iat``.
+
+        The Manager rejects any telemetry JWS without these (replay/freshness
+        protection). We stamp them *before* buffering so a message that is
+        buffered on a transient failure and flushed later keeps the *same*
+        ``jti`` — a lost-ack retry of an already-delivered message is then
+        de-duplicated by the Manager (409) instead of double-counted, and its
+        original ``iat`` is what the freshness window is measured against.
+        """
+        if isinstance(payload.get("jti"), str) and isinstance(
+            payload.get("iat"), (int, float)
+        ):
+            return payload
+        enriched = dict(payload)
+        enriched.setdefault("jti", uuid.uuid4().hex)
+        enriched.setdefault("iat", int(time.time()))
+        return enriched
+
     def _append_buffer(self, payload: Dict[str, Any]) -> None:
         self.buffer_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.buffer_path, "a", encoding="utf-8") as f:
@@ -289,6 +310,9 @@ class EdgeAgent:
           않고 :class:`PermanentTelemetryError`를 그대로 전파한다 - 재시도해도
           실패가 확정적인 요청을 무한정 쌓아두지 않기 위함이다.
         """
+        # Stamp jti/iat once, before any buffering, so a buffered+flushed retry
+        # reuses the same nonce (Manager de-dups it rather than double-counting).
+        payload = self._ensure_replay_claims(payload)
         ok = await self._post_telemetry_once(payload)
         if not ok:
             self._append_buffer(payload)

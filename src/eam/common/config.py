@@ -11,6 +11,14 @@ Environment variables:
     JWT_TTL       - JWT time-to-live in seconds (default: 900)
     AUTO_APPROVE  - if true, device registration is auto-approved (default: false)
     INSECURE_MODE - if true, auth/authorization checks are bypassed for demos (default: false)
+    TELEMETRY_REPLAY_WINDOW - telemetry freshness/replay window in seconds
+                    (default: 86400). A telemetry JWS is accepted only if its
+                    ``iat`` is within this window of now, and its ``jti`` has
+                    not been seen before within the window. The window is wide
+                    by default so legitimately store-and-forward buffered
+                    telemetry (see EdgeAgent.flush_buffer) still flushes within
+                    a day; narrow it to tighten freshness at the cost of the
+                    max tolerated buffering delay.
 """
 
 from __future__ import annotations
@@ -24,6 +32,9 @@ DEFAULT_JWT_ISSUER = "edge-auth-manager"
 DEFAULT_JWT_AUDIENCE = "edge-agents"
 DEFAULT_JWT_TTL_SECONDS = 900
 JWT_ALGORITHM = "RS256"
+# Telemetry replay/freshness window (seconds). Wide default keeps store-and-
+# forward buffering working within a day; see the module docstring.
+DEFAULT_TELEMETRY_REPLAY_WINDOW_SECONDS = 86400
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -53,6 +64,7 @@ class EAMConfig:
     jwt: JWTConfig
     auto_approve: bool
     insecure_mode: bool
+    telemetry_replay_window_seconds: int
 
 
 def load_config() -> EAMConfig:
@@ -70,4 +82,9 @@ def load_config() -> EAMConfig:
         jwt=jwt_cfg,
         auto_approve=_env_bool("AUTO_APPROVE", False),
         insecure_mode=_env_bool("INSECURE_MODE", False),
+        telemetry_replay_window_seconds=int(
+            os.environ.get(
+                "TELEMETRY_REPLAY_WINDOW", str(DEFAULT_TELEMETRY_REPLAY_WINDOW_SECONDS)
+            )
+        ),
     )

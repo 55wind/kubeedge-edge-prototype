@@ -1,9 +1,11 @@
 """SQLite-backed device registry and telemetry store for the Manager service.
 
-Two tables live in one sqlite3 database file:
+Three tables live in one sqlite3 database file:
 
 * ``devices``  - one row per registered device (pending/approved/revoked).
 * ``telemetry``- one row per accepted telemetry submission.
+* ``seen_jti`` - one row per accepted telemetry JWS nonce (``jti``), used to
+  reject replays of an already-accepted message within the freshness window.
 
 Thread-safe: a single sqlite3 connection is opened with
 ``check_same_thread=False`` and all access is serialized through an internal
@@ -93,6 +95,16 @@ class DeviceStore:
                     ts TEXT NOT NULL,
                     payload_json TEXT NOT NULL,
                     verified INTEGER NOT NULL
+                )
+                """
+            )
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS seen_jti (
+                    device_id TEXT NOT NULL,
+                    jti TEXT NOT NULL,
+                    exp_epoch REAL NOT NULL,
+                    PRIMARY KEY (device_id, jti)
                 )
                 """
             )
@@ -212,6 +224,33 @@ class DeviceStore:
             )
             for row in rows
         ]
+
+    # -- replay protection (telemetry JWS nonce) ---------------------------
+
+    def record_jti(
+        self, device_id: str, jti: str, exp_epoch: float, now_epoch: float
+    ) -> bool:
+        """Atomically record a telemetry ``jti`` for ``device_id``.
+
+        Returns ``True`` if this ``(device_id, jti)`` pair is *fresh* (never
+        seen before within the window) and was recorded, ``False`` if it is a
+        replay of an already-accepted message. Expired rows (``exp_epoch`` in
+        the past relative to ``now_epoch``) are pruned opportunistically so the
+        table stays bounded to roughly one window's worth of traffic.
+        """
+        with self._lock:
+            self._conn.execute("DELETE FROM seen_jti WHERE exp_epoch < ?", (now_epoch,))
+            try:
+                self._conn.execute(
+                    "INSERT INTO seen_jti (device_id, jti, exp_epoch) VALUES (?, ?, ?)",
+                    (device_id, jti, exp_epoch),
+                )
+                self._conn.commit()
+                return True
+            except sqlite3.IntegrityError:
+                # Primary-key clash -> this jti was already accepted -> replay.
+                self._conn.commit()
+                return False
 
     @staticmethod
     def _row_to_record(row) -> DeviceRecord:

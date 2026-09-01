@@ -46,6 +46,16 @@ class TelemetryResponse(BaseModel):
     status: str
 
 
+class TelemetryOut(BaseModel):
+    """One stored telemetry submission, exposed via the read API for operators."""
+
+    id: int
+    device_id: str
+    ts: str
+    verified: bool
+    payload: dict
+
+
 class DeviceOut(BaseModel):
     device_id: str
     site: str
