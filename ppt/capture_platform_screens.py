@@ -258,6 +258,12 @@ def main() -> None:
             authorize_with(page, admin_token)
             block = execute_operation(page, "/api/v1/audit", "get")
             shot(block, "platform_audit.png")
+            collapse_all(page)
+
+            # 7) 수신 데이터 실조회: GET /telemetry -> 저장된 텔레메트리 + JWS
+            #    검증 여부(verified)를 플랫폼에서 직접 확인 (관측성 격차 해소)
+            block = execute_operation(page, "/api/v1/telemetry", "get")
+            shot(block, "platform_telemetry_read.png")
 
             browser.close()
     finally:

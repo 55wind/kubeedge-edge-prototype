@@ -1,15 +1,15 @@
 # 요구사항(7개 수행항목) ↔ 산출물 매핑
 
-Task 7(매핑 PPT)와 Task 8(최종 검수)이 기준으로 삼는 문서. 전체 `python -m pytest tests/ -q` 실행 결과 **147 passed**(2026-08-04 기준, 로컬 재현 가능)를 코드 산출물 완료의 근거로 삼는다.
+Task 7(매핑 PPT)와 Task 8(최종 검수)이 기준으로 삼는 문서. 전체 `python -m pytest tests/ -q` 실행 결과 **172 passed**(2026-08-15 기준, 로컬 재현 가능)를 코드 산출물 완료의 근거로 삼는다. 여기에는 실제 Manager를 대상으로 한 **시나리오 기반 공격 테스트 15종(`tests/test_attack_scenarios.py`)과 텔레메트리 재전송 방지·수신 데이터 실조회 테스트**가 포함된다(아래 "시나리오 기반 공격 테스트" 절 참조).
 
 | # | 수행 항목 | 코드 산출물 | 문서 산출물 | 테스트 | 데모 | 상태 |
 |---|---|---|---|---|---|---|
 | 1 | K8s(KubeEdge) 구동·성능 (1,000기 지연 검증) | `k8s/*.yaml`, `deploy/demo-setup-v2.sh`, `bench/run_bench.py`, `bench/model.py` | `docs/06-performance-plan.md`, `docs/perf/PERFORMANCE_REPORT.md` | `tests/test_manifests.py`, `tests/test_bench_model.py` | `deploy/demo-setup-v2.sh` (K8s 실환경), `bench/run_bench.py && python bench/report.py` (실측 재현) | **구현완료 + 문서화 + 시연가능**(로컬 시연은 즉시, K8s 실환경은 Multipass 필요) |
 | 2 | 미들웨어 통신 방식 결정 | `src/eam/manager/app.py`(REST API), `k8s/rabbitmq.yaml`(선택적 대안, 미사용) | `docs/01-comm-method-decision.md`, `docs/02-manager-coexistence.md` | `tests/test_manager_api.py` | 해당 없음(설계 결정 문서) | **구현완료(하이브리드 구조로 반영) + 문서화** |
-| 3 | 대규모(1,000기) 디바이스 인증 AAA ★핵심 | `src/eam/common/{pki,jws,audit}.py`, `src/eam/manager/{app,ca,rbac,store,schemas}.py`, `src/eam/simulator/{fleet,vdevice}.py` | `docs/04-rnr-interface.md`(인터페이스/인증서/JWT 규격), `docs/06-performance-plan.md` | `tests/test_pki.py`, `tests/test_jws.py`, `tests/test_audit.py`, `tests/test_manager_api.py`, `tests/test_rbac.py`, `tests/test_simulator.py` | `python -m eam.simulator.fleet --n 200`(실측), `demo/run_demo.py`(AAA 흐름 시연) | **구현완료 + 문서화 + 시연가능** |
+| 3 | 대규모(1,000기) 디바이스 인증 AAA ★핵심 | `src/eam/common/{pki,jws,audit}.py`, `src/eam/manager/{app,ca,rbac,store,schemas}.py`(재전송 방지 jti/iat + `GET /telemetry` 수신 데이터 실조회 포함), `src/eam/simulator/{fleet,vdevice}.py`, `security/attack_scenarios.py`(red-team) | `docs/04-rnr-interface.md`(인터페이스/인증서/JWT 규격), `docs/06-performance-plan.md`, `docs/07-security-testing.md`(공격 시나리오·결과) | `tests/test_pki.py`, `tests/test_jws.py`, `tests/test_audit.py`, `tests/test_manager_api.py`, `tests/test_rbac.py`, `tests/test_simulator.py`, `tests/test_attack_scenarios.py`, `tests/test_replay_protection.py`, `tests/test_telemetry_read_api.py` | `python -m eam.simulator.fleet --n 200`(실측), `demo/run_demo.py`(AAA 흐름), `python security/attack_scenarios.py`(공격 15종 실행) | **구현완료 + 문서화 + 시연가능** |
 | 4 | KubeEdge 연동 구조 적용 | `k8s/{manager,agent-edge1,agent-edge2,gateway,namespace}.yaml`, `deploy/demo-setup-v2.sh`(CloudCore/EdgeCore 구축) | `docs/05-kubeedge-integration.md`(4계층 흐름도 mermaid 포함) | `tests/test_manifests.py` | `deploy/demo-setup-v2.sh` + `demo/DEMO_SCENARIO.md` §2 | **구현완료 + 문서화 + 시연가능**(K8s 실환경은 Multipass 필요, 로컬은 즉시) |
 | 5 | 네트워크 구성·주소 체계 (공인 IP) | `src/eam/gateway/gateway.py`, `k8s/gateway.yaml` | `docs/03-network-addressing.md` | `tests/test_gateway.py` | `demo/DEMO_SCENARIO.md` §2.2(게이트웨이 집선 확인) | **구현완료 + 문서화 + 시연가능** |
-| 6 | 보안 모듈–프레임워크 R&R | `src/eam/manager/app.py`(공개 계약), `src/eam/manager/schemas.py` | `docs/04-rnr-interface.md` | `tests/test_manager_api.py`(엔드포인트 계약 검증) | 해당 없음(문서 산출물) | **문서화 완료** |
+| 6 | 보안 모듈–프레임워크 R&R | `src/eam/manager/app.py`(공개 계약), `src/eam/manager/{schemas,rbac}.py` | `docs/04-rnr-interface.md`, `docs/07-security-testing.md` | `tests/test_manager_api.py`(엔드포인트 계약 검증), `tests/test_attack_scenarios.py`(경계별 인가·거부 실증) | `python security/attack_scenarios.py`(RBAC 경계 15종 실행) | **구현완료 + 문서화 + 시연가능** |
 | 7 | 시연 (보안 적용 전·후 비교) | `demo/run_demo.py`, `src/eam/manager/app.py`(`INSECURE_MODE`) | `demo/DEMO_SCENARIO.md` | `tests/test_manifests.py`(`run_demo.py --fast` exit 0 검증 포함) | `python demo/run_demo.py` / `--fast`, K8s: `kubectl set env ... INSECURE_MODE=true\|false` | **구현완료 + 문서화 + 시연가능**(로컬 검증 완료: exit 0) |
 
 ## 커버리지 상태 범례
@@ -20,11 +20,11 @@ Task 7(매핑 PPT)와 Task 8(최종 검수)이 기준으로 삼는 문서. 전�
 
 ## Task 7(PPT) 관련 참고
 
-`ppt/build_ppt.py`(재실행 가능한 생성 스크립트) + `ppt/ETRI_2차년도_수행항목_매핑.pptx`(19슬라이드, 16:9)가 생성 완료됐다. 표지/수행범위 재정리/Before-After/4계층 아키텍처(도형)/수행항목 1~7(위 표의 코드·문서·테스트 경로를 슬라이드 5~11 산출물 근거로 그대로 재사용)/성능 검증(PNG 차트+외삽 결론)/시연 시나리오/기능-화면 매핑(총괄표+실제 플랫폼 화면 4장: Swagger UI·Kubernetes Dashboard·실제 CLI 출력, `docs/screens/*.png` — `ppt/capture_platform_screens.py`/`capture_k8s_screens.py`/`capture_cli_screens.py`/`capture_screens.py`로 재생성)/향후 계획 순으로 구성된다. `python ppt/build_ppt.py`(생성+검증) 또는 `python ppt/build_ppt.py --verify`(검증만)로 재현 가능하며, 검증은 19슬라이드 수·zip 무결성·전 도형의 슬라이드 경계 내 위치를 확인한다.
+`ppt/build_ppt.py`(재실행 가능한 생성 스크립트) + `ppt/ETRI_2차년도_수행항목_매핑.pptx`(20슬라이드, 16:9)가 생성 완료됐다. 표지/수행범위 재정리/Before-After/4계층 아키텍처(도형)/수행항목 1~7(위 표의 코드·문서·테스트 경로를 슬라이드 5~11 산출물 근거로 그대로 재사용)/성능 검증(PNG 차트+외삽 결론)/시연 시나리오/기능-화면 매핑(총괄표+실제 플랫폼 화면 5장: Swagger UI·Kubernetes Dashboard·실제 CLI 출력·**시나리오 공격 테스트·수신 데이터 실조회**, `docs/screens/*.png` — `ppt/capture_platform_screens.py`/`capture_k8s_screens.py`/`capture_cli_screens.py`/`capture_screens.py`로 재생성)/향후 계획 순으로 구성된다. `python ppt/build_ppt.py`(생성+검증) 또는 `python ppt/build_ppt.py --verify`(검증만)로 재현 가능하며, 검증은 20슬라이드 수·zip 무결성·전 도형의 슬라이드 경계 내 위치를 확인한다.
 
 ## Task 8(최종 검수) 관련 참고
 
-Task 8은 본 표를 기준으로 (a) 전체 `pytest tests/ -q` 재실행, (b) `python demo/run_demo.py --fast` exit 0 확인, (c) `python ppt/build_ppt.py`(Task 7 완료 후) 재실행 검증, (d) whole-branch 코드리뷰로 7개 항목 커버리지를 최종 대조한다.
+Task 8은 본 표를 기준으로 (a) 전체 `pytest tests/ -q` 재실행, (b) `python demo/run_demo.py --fast` exit 0 확인, (c) `python ppt/build_ppt.py`(Task 7 완료 후) 재실행 검증, (d) whole-branch 코드리뷰로 7개 항목 커버리지를 최종 대조, (e) `python security/attack_scenarios.py`로 공격 시나리오 15종이 전부 차단·감사되는지 재확인한다.
 
 ## 기존→현재 화면 구성 덱
 

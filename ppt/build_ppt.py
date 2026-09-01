@@ -52,6 +52,9 @@ SCREEN_FLEET = SCREENS_DIR / "screen_fleet.png"
 # 실제 kind 기반 Kubernetes 클러스터 캡처 (ppt/capture_k8s_screens.py)
 SCREEN_K8S_DASHBOARD = SCREENS_DIR / "k8s_dashboard.png"
 SCREEN_K8S_PODS = SCREENS_DIR / "k8s_pods.png"
+# 보안 검증: 실제 Manager 대상 시나리오 공격 테스트 + 수신 데이터 실조회
+SCREEN_ATTACK = SCREENS_DIR / "screen_attack.png"
+SCREEN_TELEMETRY_READ = SCREENS_DIR / "platform_telemetry_read.png"
 
 FONT_NAME = "맑은 고딕"
 
@@ -812,6 +815,8 @@ SCREEN_MAP_ROWS = [
      "가상 디바이스 일괄 등록·인증·전송 CLI(python -m eam.simulator.fleet) - 성능 차트는 슬라이드 12", "슬라이드 17"),
     ("항목 ①·④  실제 K8s 클러스터 구동",
      "Kubernetes Dashboard(edge-auth 네임스페이스)와 kubectl 실제 상태 - manager/agent/gateway 파드 Running", "슬라이드 18"),
+    ("항목 ③·⑥  시나리오 공격 테스트·수신 데이터",
+     "실제 Manager 대상 red-team 15종 15/15 차단·감사 + GET /api/v1/telemetry 수신·검증(verified) 실조회", "슬라이드 19"),
 ]
 
 
@@ -821,7 +826,7 @@ def build_screen_map_overview(prs):
                   "모든 캡처는 실제 플랫폼 화면 - Swagger UI·Kubernetes Dashboard·실제 CLI 출력 (ppt/capture_*.py 로 재생성)")
 
     top = Inches(1.2)
-    row_h = Inches(0.88)
+    row_h = Inches(0.78)
     for i, (feature, screen, ref) in enumerate(SCREEN_MAP_ROWS):
         y = top + i * row_h
         add_rect(slide, Inches(0.5), y, Inches(3.5), row_h - Inches(0.1), fill=NAVY_MID)
@@ -921,6 +926,22 @@ def build_screen_k8s(prs):
     add_footer(slide, 18)
 
 
+def build_screen_security(prs):
+    slide = add_slide(prs)
+    add_title_bar(slide, "화면 5. 시나리오 기반 공격 테스트·수신 데이터 실조회 (수행항목 ③·⑥)",
+                  "실제 Manager 대상 red-team 15종 전부 차단·감사 + 텔레메트리 수신·검증 여부 플랫폼 실조회")
+    half_w = Inches(6.05)
+    add_screen_picture(
+        slide, SCREEN_ATTACK, Inches(0.5), Inches(1.2), half_w, Inches(5.35),
+        caption="python security/attack_scenarios.py - 위조/권한상승/사칭/재전송 등 15종 15/15 차단, 15/15 감사기록",
+    )
+    add_screen_picture(
+        slide, SCREEN_TELEMETRY_READ, Inches(0.5) + half_w + Inches(0.23), Inches(1.2), half_w, Inches(5.35),
+        caption="GET /api/v1/telemetry - 수신 데이터와 JWS 검증 여부(verified)·재전송 방지 nonce(jti) 플랫폼 실조회",
+    )
+    add_footer(slide, 19)
+
+
 # ---------------------------------------------------------------------------
 # 슬라이드 18: 향후 계획
 # ---------------------------------------------------------------------------
@@ -942,7 +963,6 @@ def build_future(prs):
             "RabbitMQ 등 비동기 채널 채택 여부, EdgeMesh 도입 검토",
             "auth/token 키 소지 증명(서명 nonce 챌린지) - 현재는 인증서 제시만 검증",
             "RBAC default-deny 전환 - 미등재 엔드포인트의 암묵적 허용 제거",
-            "JWS freshness(재전송 방지) - 텔레메트리 서명에 타임스탬프/nonce 검증 추가",
         ],
         body_size=11,
     )
@@ -961,7 +981,7 @@ def build_future(prs):
         body_size=12.5,
     )
 
-    add_footer(slide, 19)
+    add_footer(slide, 20)
 
 
 # ---------------------------------------------------------------------------
@@ -986,7 +1006,8 @@ def build_presentation() -> Presentation:
     build_screen_admin(prs)                # 16
     build_screen_interface(prs)            # 17
     build_screen_k8s(prs)                  # 18
-    build_future(prs)                      # 19
+    build_screen_security(prs)             # 19
+    build_future(prs)                      # 20
 
     return prs
 
@@ -1000,7 +1021,7 @@ def verify(path: Path) -> None:
     # (b) 재로드 + 슬라이드 수/텍스트프레임 경계 검증
     prs = Presentation(str(path))
     slides = list(prs.slides)
-    assert len(slides) == 19, f"슬라이드 수 불일치: {len(slides)} (기대: 19)"
+    assert len(slides) == 20, f"슬라이드 수 불일치: {len(slides)} (기대: 20)"
 
     for si, slide in enumerate(slides, start=1):
         for shape in slide.shapes:

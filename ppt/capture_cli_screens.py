@@ -6,9 +6,10 @@ renderer used by ``ppt/capture_k8s_screens.py``). Nothing is retyped or
 simulated: if the program's output changes, the screenshot changes.
 
 Covers:
-  screen_demo.png    - demo/run_demo.py --fast      (보안 적용 전·후 비교, 수행항목 7)
-  screen_gateway.png - EdgeGateway 사설망 집선 실행  (수행항목 5)
-  screen_fleet.png   - eam.simulator.fleet CLI       (수행항목 1·3)
+  screen_demo.png     - demo/run_demo.py --fast      (보안 적용 전·후 비교, 수행항목 7)
+  screen_gateway.png  - EdgeGateway 사설망 집선 실행  (수행항목 5)
+  screen_fleet.png    - eam.simulator.fleet CLI       (수행항목 1·3)
+  screen_attack.png   - security/attack_scenarios.py  (시나리오 기반 공격 테스트, 수행항목 3·6)
 
 Run: python ppt/capture_cli_screens.py
 """
@@ -85,6 +86,7 @@ def main() -> None:
     gateway_out = run([sys.executable, "-c", GATEWAY_SCRIPT])
     fleet_out = run([sys.executable, "-m", "eam.simulator.fleet",
                      "--n", "20", "--concurrency", "8"])
+    attack_out = run([sys.executable, "security/attack_scenarios.py"])
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
@@ -102,6 +104,11 @@ def main() -> None:
             page, "가상 디바이스 20기 일괄 등록·인증·전송 — 시뮬레이터 실행 화면",
             [("python -m eam.simulator.fleet --n 20 --concurrency 8", fleet_out)],
             "screen_fleet.png",
+        )
+        render_and_shot(
+            page, "시나리오 기반 공격 테스트 — 실제 Manager 대상 red-team 15종 (수행항목 3·6)",
+            [("python security/attack_scenarios.py", attack_out)],
+            "screen_attack.png",
         )
         browser.close()
     print("[cli-capture] done")
